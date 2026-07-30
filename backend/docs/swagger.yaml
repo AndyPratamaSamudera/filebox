@@ -1,0 +1,1129 @@
+basePath: /api/v1
+definitions:
+  entity.APIKey:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      last_used_at:
+        type: string
+      name:
+        type: string
+    type: object
+  entity.Friend:
+    properties:
+      created_at:
+        type: string
+      friend_email:
+        type: string
+      friend_name:
+        type: string
+      friend_user_id:
+        type: integer
+      id:
+        type: integer
+      user_id:
+        type: integer
+    type: object
+  entity.FriendRequest:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      recipient_email:
+        type: string
+      recipient_name:
+        type: string
+      recipient_user_id:
+        type: integer
+      requester_email:
+        type: string
+      requester_name:
+        type: string
+      requester_user_id:
+        type: integer
+      status:
+        $ref: '#/definitions/entity.FriendRequestStatus'
+      updated_at:
+        type: string
+    type: object
+  entity.FriendRequestStatus:
+    enum:
+    - pending
+    - accepted
+    - rejected
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - FriendRequestPending
+    - FriendRequestAccepted
+    - FriendRequestRejected
+    - FriendRequestCancelled
+  entity.Item:
+    properties:
+      checksum:
+        type: string
+      chunk_count:
+        type: integer
+      chunk_size:
+        type: integer
+      created_at:
+        type: string
+      encryption_iv:
+        type: string
+      encryption_tag:
+        type: string
+      ext:
+        type: string
+      id:
+        type: integer
+      is_chunked:
+        type: boolean
+      is_favorite:
+        type: boolean
+      is_locked:
+        type: boolean
+      mime:
+        type: string
+      name:
+        type: string
+      parent_id:
+        type: integer
+      path:
+        type: string
+      share_count:
+        type: integer
+      size:
+        type: integer
+      type:
+        $ref: '#/definitions/entity.ItemType'
+    type: object
+  entity.ItemShare:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      item_id:
+        type: integer
+      owner_user_id:
+        type: integer
+      shared_email:
+        description: Recipient identity is populated by queries via JOIN to the users
+          table.
+        type: string
+      shared_name:
+        type: string
+      shared_with_user_id:
+        type: integer
+    type: object
+  entity.ItemType:
+    enum:
+    - file
+    - folder
+    type: string
+    x-enum-varnames:
+    - ItemTypeFile
+    - ItemTypeFolder
+  entity.SharedItem:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      item_ext:
+        type: string
+      item_id:
+        type: integer
+      item_is_locked:
+        type: boolean
+      item_mime:
+        type: string
+      item_name:
+        type: string
+      item_size:
+        type: integer
+      owner_email:
+        type: string
+      owner_name:
+        type: string
+      owner_user_id:
+        type: integer
+    type: object
+  entity.User:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      last_login_at:
+        type: string
+      role:
+        $ref: '#/definitions/entity.UserRole'
+      status:
+        $ref: '#/definitions/entity.UserStatus'
+      storage_quota:
+        type: integer
+      storage_used:
+        type: integer
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+  entity.UserRole:
+    enum:
+    - user
+    - admin
+    type: string
+    x-enum-varnames:
+    - UserRoleUser
+    - UserRoleAdmin
+  entity.UserStatus:
+    enum:
+    - active
+    - suspended
+    type: string
+    x-enum-varnames:
+    - UserStatusActive
+    - UserStatusSuspended
+  handler.ItemFolderRequest:
+    properties:
+      directory:
+        type: string
+    type: object
+  handler.ItemUpdateRequest:
+    properties:
+      directory:
+        type: string
+      is_favorite:
+        type: boolean
+      name:
+        type: string
+      password:
+        type: string
+      shares:
+        items:
+          type: string
+        type: array
+    type: object
+  handler.addFriendRequest:
+    properties:
+      email:
+        type: string
+    type: object
+  handler.apiKeyResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      key:
+        type: string
+      name:
+        type: string
+    type: object
+  handler.createAPIKeyRequest:
+    properties:
+      name:
+        type: string
+    type: object
+  handler.loginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  handler.loginResponse:
+    properties:
+      api_key:
+        type: string
+      tokens:
+        $ref: '#/definitions/service.TokenPair'
+      user:
+        $ref: '#/definitions/entity.User'
+    type: object
+  handler.registerRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  handler.registerResponse:
+    properties:
+      api_key:
+        type: string
+      user:
+        $ref: '#/definitions/entity.User'
+    type: object
+  handler.tokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  service.ItemDetail:
+    properties:
+      item:
+        $ref: '#/definitions/entity.Item'
+      shares:
+        items:
+          $ref: '#/definitions/entity.ItemShare'
+        type: array
+    type: object
+  service.TokenPair:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+    type: object
+  utils.ErrorResponse:
+    properties:
+      errors: {}
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  utils.SuccessResponse:
+    properties:
+      data: {}
+      message:
+        type: string
+      meta: {}
+      success:
+        type: boolean
+    type: object
+info:
+  contact: {}
+  description: Private cloud storage (Google Drive / NAS) for home LAN use.
+  title: FileBox API
+  version: "1.0"
+paths:
+  /api-keys:
+    get:
+      description: List active API keys for the authenticated user. Key hashes are
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.APIKey'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List API keys
+      tags:
+      - api-keys
+    post:
+      consumes:
+      - application/json
+      description: Generate a new API key for programmatic access. The plaintext key
+      parameters:
+      - description: API key payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.createAPIKeyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.apiKeyResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create API key
+      tags:
+      - api-keys
+  /api-keys/:id:
+    delete:
+      description: Revoke an API key so it can no longer be used.
+      parameters:
+      - description: API Key ID
+        format: int64
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Revoke API key
+      tags:
+      - api-keys
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate and receive access/refresh tokens
+      parameters:
+      - description: Login payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.loginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.loginResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Log in
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Revoke the session backing a refresh token
+      parameters:
+      - description: Refresh payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.tokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Log out
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Rotate a refresh token into a new access/refresh pair
+      parameters:
+      - description: Refresh payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.tokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.loginResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Refresh tokens
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Create a FileBox user account. A default API key is generated
+      parameters:
+      - description: Registration payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.registerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.registerResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Register a new account
+      tags:
+      - auth
+  /friends:
+    get:
+      description: Returns the current user's accepted friend list.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Friend'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List friends
+      tags:
+      - friends
+    post:
+      consumes:
+      - application/json
+      description: Sends a friend request to a user by email.
+      parameters:
+      - description: Friend email
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.addFriendRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.FriendRequest'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Send a friend request
+      tags:
+      - friends
+  /friends/{id}:
+    delete:
+      description: Removes a mutual friend relationship.
+      parameters:
+      - description: Friend ID
+        format: int64
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove friend
+      tags:
+      - friends
+  /friends/requests:
+    get:
+      description: Returns pending friend requests for the current user.
+      parameters:
+      - description: 'Filter by direction: incoming, outgoing'
+        in: query
+        name: direction
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.FriendRequest'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List friend requests
+      tags:
+      - friends
+  /friends/requests/{id}:
+    delete:
+      description: Cancels an outgoing friend request.
+      parameters:
+      - description: Request ID
+        format: int64
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancel a friend request
+      tags:
+      - friends
+  /friends/requests/{id}/accept:
+    post:
+      description: Accepts an incoming friend request and creates a mutual friendship.
+      parameters:
+      - description: Request ID
+        format: int64
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.FriendRequest'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Accept a friend request
+      tags:
+      - friends
+  /friends/requests/{id}/reject:
+    post:
+      description: Rejects an incoming friend request.
+      parameters:
+      - description: Request ID
+        format: int64
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.FriendRequest'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Reject a friend request
+      tags:
+      - friends
+  /item/delete:
+    delete:
+      description: Permanently delete a file or folder (folders are deleted recursively).
+      parameters:
+      - description: Item path
+        in: query
+        name: directory
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/utils.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete an item
+      tags:
+      - items
+  /item/detail:
+    get:
+      description: Get metadata for a file or folder. Files include their share list.
+      parameters:
+      - description: Item path
+        in: query
+        name: directory
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/service.ItemDetail'
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Item detail
+      tags:
+      - items
+  /item/download:
+    get:
+      description: Download a file by path. If the file is password-protected, supply
+        the password.
+      parameters:
+      - description: File path
+        in: query
+        name: directory
+        required: true
+        type: string
+      - description: File password
+        in: query
+        name: password
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Download a file
+      tags:
+      - items
+  /item/favorites:
+    get:
+      description: List the user's favorite files.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Item'
+                  type: array
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Favorites
+      tags:
+      - items
+  /item/folder:
+    post:
+      consumes:
+      - application/json
+      description: Create a new folder at the given path. Parent folders must already
+        exist.
+      parameters:
+      - description: Folder path
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ItemFolderRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Item'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create folder
+      tags:
+      - items
+  /item/list:
+    get:
+      description: List the contents of a folder (files + subfolders). Empty directory
+        means root.
+      parameters:
+      - description: Folder path
+        in: query
+        name: directory
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Item'
+                  type: array
+              type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List items
+      tags:
+      - items
+  /item/preview:
+    get:
+      description: Preview a file inline by path. If the file is password-protected,
+        supply the password.
+      parameters:
+      - description: File path
+        in: query
+        name: directory
+        required: true
+        type: string
+      - description: File password
+        in: query
+        name: password
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview a file
+      tags:
+      - items
+  /item/search:
+    get:
+      description: Search files and folders by name.
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.Item'
+                  type: array
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Search items
+      tags:
+      - items
+  /item/shared:
+    get:
+      description: List files that other users have shared with the current user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/entity.SharedItem'
+                  type: array
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Shared with me
+      tags:
+      - items
+  /item/update:
+    put:
+      consumes:
+      - application/json
+      description: Rename a file/folder, set file favorite, replace file shares, or
+        set/clear file password. Folders only support rename.
+      parameters:
+      - description: Update payload
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ItemUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Item'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update an item
+      tags:
+      - items
+  /item/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a file directly to the given directory. For large files,
+        use chunked upload.
+      parameters:
+      - description: File bytes
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Destination folder path
+        in: formData
+        name: directory
+        type: string
+      - description: Add to favorites
+        in: formData
+        name: favorite
+        type: boolean
+      - description: File password
+        in: formData
+        name: password
+        type: string
+      - collectionFormat: csv
+        description: Emails to share with
+        in: formData
+        items:
+          type: string
+        name: share_with
+        type: array
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Item'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload a file
+      tags:
+      - items
+  /profile:
+    get:
+      description: Returns the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.User'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get current user profile
+      tags:
+      - auth
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: X-API-Key
+    type: apiKey
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
