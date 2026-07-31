@@ -62,6 +62,22 @@ export async function uploadItem(file, directory, meta = {}) {
   return json.data;
 }
 
+export async function uploadByUrl({ url, directory, favorite, password, share_with }) {
+  const body = { url };
+  if (directory) body.directory = directory;
+  if (favorite) body.favorite = true;
+  if (password) body.password = password;
+  if (share_with?.length) body.share_with = share_with;
+  const res = await authFetch(`${BASE}/item/upload-by-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) throw new Error(json.message || 'URL upload failed');
+  return json.data;
+}
+
 export function itemUrl(directory, kind, password = '') {
   const params = new URLSearchParams();
   if (auth.access) params.set('token', auth.access);

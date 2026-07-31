@@ -7,10 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"filebox/internal/encryption"
 	"filebox/internal/entity"
@@ -21,10 +26,10 @@ import (
 
 // ItemService handles all operations on the unified items table (files + folders).
 type ItemService struct {
-	repo     *repository.ItemRepository
-	userRepo *repository.UserRepository
-	storage  *storage.LocalStorage
-	enc      *encryption.Service
+	repo      *repository.ItemRepository
+	userRepo  *repository.UserRepository
+	storage   *storage.LocalStorage
+	enc       *encryption.Service
 	maxDirect int64
 }
 
@@ -396,6 +401,212 @@ func (s *ItemService) Upload(ctx context.Context, in ItemUploadInput) (*entity.I
 	_ = s.userRepo.AddStorageUsed(ctx, in.UserID, uint64(size), false)
 	utils.Log.Info().Uint64("user_id", in.UserID).Uint64("item_id", created.ID).Int64("size", size).Msg("file uploaded")
 	return created, nil
+}
+
+// ItemUploadByURLInput bundles the fields needed to import a remote file.
+type ItemUploadByURLInput struct {
+	UserID          uint64
+	Directory       string
+	URL             string
+	Favorite        bool
+	ShareRecipients []string
+	Password        string
+}
+
+// UploadByURL downloads a file from a public URL and stores it like a normal
+// upload. It performs basic SSRF protection and enforces the same size/name
+// validations as direct uploads.
+func (s *ItemService) UploadByURL(ctx context.Context, in ItemUploadByURLInput) (*entity.Item, error) {
+	u, err := url.Parse(in.URL)
+	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, NewUserError("invalid URL")
+	}
+
+	internal, err := utils.IsInternalHost(in.URL)
+	if err != nil {
+		return nil, NewUserError("cannot resolve URL host")
+	}
+	if internal {
+		return nil, NewUserError("URL points to an internal or private host")
+	}
+
+	httpClient := &http.Client{Timeout: 5 * time.Minute}
+
+	// Try HEAD first to learn size and filename without downloading the body.
+	var declaredSize int64
+	var headFilename string
+	headReq, err := http.NewRequestWithContext(ctx, http.MethodHead, in.URL, nil)
+	if err == nil {
+		headResp, err := httpClient.Do(headReq)
+		if err == nil {
+			_ = headResp.Body.Close()
+			declaredSize = headResp.ContentLength
+			headFilename = filenameFromContentDisposition(headResp.Header.Get("Content-Disposition"))
+		}
+	}
+
+	if s.maxDirect > 0 && declaredSize > 0 && declaredSize > s.maxDirect {
+		return nil, NewUserError("remote file exceeds direct upload limit")
+	}
+
+	filename := headFilename
+	if filename == "" {
+		filename = filenameFromURLPath(u)
+	}
+	if filename == "" {
+		filename = "download.bin"
+	}
+
+	ext := strings.ToLower(filepath.Ext(filename))
+	if ext == "" {
+		return nil, NewUserError("only files with an extension can be uploaded")
+	}
+	base := strings.TrimSuffix(filename, ext)
+	if err := validateItemName(base); err != nil {
+		return nil, err
+	}
+
+	parent, err := s.resolveFolder(ctx, in.UserID, in.Directory)
+	if err != nil {
+		return nil, err
+	}
+	var parentID *uint64
+	var parentPath string
+	if parent != nil {
+		parentID = &parent.ID
+		parentPath = parent.Path
+	}
+
+	uniqueName, err := s.nextUniqueName(ctx, in.UserID, parentID, filename, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateFilePassword(in.Password, uniqueName); err != nil {
+		return nil, err
+	}
+
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, in.URL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("prepare download: %w", err)
+	}
+
+	resp, err := httpClient.Do(getReq)
+	if err != nil {
+		return nil, NewUserError("failed to download file from URL")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, NewUserError("remote server returned an error")
+	}
+
+	var mimeType string
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		mediaType, _, _ := mime.ParseMediaType(ct)
+		mimeType = mediaType
+	}
+
+	// Cap the download at maxDirect + 1 so oversized files fail fast.
+	var reader io.Reader = resp.Body
+	if s.maxDirect > 0 {
+		reader = io.LimitReader(resp.Body, s.maxDirect+1)
+	}
+	plain, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("read download: %w", err)
+	}
+	if s.maxDirect > 0 && int64(len(plain)) > s.maxDirect {
+		return nil, NewUserError("remote file exceeds direct upload limit")
+	}
+
+	var passwordHash *string
+	if in.Password != "" {
+		h := utils.HashFilePassword(in.Password)
+		passwordHash = &h
+	}
+
+	cipher, iv, tag, err := s.enc.EncryptBytes(plain)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt file: %w", err)
+	}
+
+	relPath, size, err := s.storage.SaveUpload(in.UserID, ext, bytes.NewReader(cipher))
+	if err != nil {
+		return nil, err
+	}
+
+	ivB64 := base64.StdEncoding.EncodeToString(iv)
+	tagB64 := base64.StdEncoding.EncodeToString(tag)
+
+	var mimePtr *string
+	if mimeType != "" {
+		mimePtr = &mimeType
+	}
+
+	item := &entity.Item{
+		UserID:        in.UserID,
+		ParentID:      parentID,
+		Type:          entity.ItemTypeFile,
+		Name:          uniqueName,
+		Ext:           &ext,
+		Path:          itemPath(parentPath, uniqueName),
+		MIME:          mimePtr,
+		Size:          uint64(size),
+		StoragePath:   relPath,
+		EncryptionIV:  &ivB64,
+		EncryptionTag: &tagB64,
+		IsFavorite:    in.Favorite,
+		PasswordHash:  passwordHash,
+	}
+
+	created, err := s.repo.Create(ctx, item)
+	if err != nil {
+		_ = s.storage.Delete(relPath)
+		return nil, err
+	}
+
+	for _, email := range in.ShareRecipients {
+		email = strings.TrimSpace(strings.ToLower(email))
+		if email == "" {
+			continue
+		}
+		if _, err := s.shareByEmail(ctx, in.UserID, created.ID, email); err != nil {
+			utils.Log.Warn().Err(err).Uint64("item_id", created.ID).Str("email", email).Msg("failed to auto-share URL upload")
+		}
+	}
+
+	_ = s.userRepo.AddStorageUsed(ctx, in.UserID, uint64(size), false)
+	utils.Log.Info().Uint64("user_id", in.UserID).Uint64("item_id", created.ID).Int64("size", size).Str("url", in.URL).Msg("file uploaded from URL")
+	return created, nil
+}
+
+// filenameFromContentDisposition extracts a filename from a Content-Disposition
+// header, preferring the plain filename field.
+func filenameFromContentDisposition(value string) string {
+	if value == "" {
+		return ""
+	}
+	_, params, err := mime.ParseMediaType(value)
+	if err != nil {
+		return ""
+	}
+	if params["filename*"] != "" {
+		// RFC 5987 encoded value may look like UTF-8''name.ext
+		parts := strings.SplitN(params["filename*"], "''", 2)
+		if len(parts) == 2 && parts[1] != "" {
+			return parts[1]
+		}
+		return params["filename*"]
+	}
+	return params["filename"]
+}
+
+// filenameFromURLPath returns the last path segment of a URL, or an empty
+// string when the path is empty or just a slash.
+func filenameFromURLPath(u *url.URL) string {
+	if u == nil || u.Path == "" || u.Path == "/" {
+		return ""
+	}
+	return path.Base(u.Path)
 }
 
 // Update modifies an item. For folders only the name can be changed; for files,

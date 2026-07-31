@@ -301,7 +301,7 @@ func (r *ItemRepository) ListSharesForItem(ctx context.Context, itemID, ownerID 
 // enriched with item and owner metadata.
 func (r *ItemRepository) ListSharesWithUser(ctx context.Context, userID uint64) ([]entity.SharedItem, error) {
 	var shares []entity.SharedItem
-		err := r.db.SelectContext(ctx, &shares,
+	err := r.db.SelectContext(ctx, &shares,
 		`SELECT s.id, s.item_id, s.owner_user_id, s.created_at,
 			        i.name AS item_name, i.path AS item_path, i.ext AS item_ext, i.mime AS item_mime, i.size AS item_size,
 			        i.password_hash AS item_password_hash, i.storage_path AS item_storage_path,

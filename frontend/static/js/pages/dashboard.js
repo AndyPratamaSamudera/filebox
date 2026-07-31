@@ -1,6 +1,6 @@
 import { auth } from '../auth.js';
 import {
-  api, uploadItem, itemUrl, getUploadConfig, createChunkSession, uploadChunk, completeChunkSession,
+  api, uploadItem, uploadByUrl, itemUrl, getUploadConfig, createChunkSession, uploadChunk, completeChunkSession,
   search, listItems, getItemDetail, createFolder, updateItem, deleteItem, listSharedItems, listFavorites,
   listApiKeys, createApiKey, revokeApiKey, revealApiKey,
 } from '../api.js';
@@ -25,6 +25,7 @@ export async function renderDashboard(container, onLogout) {
     sharedItems: [],
     friends: [],
     friendRequests: [],
+    friendSearchQuery: '',
     friendsTab: 'friends',
     loading: false,
     error: '',
@@ -40,6 +41,14 @@ export async function renderDashboard(container, onLogout) {
     uploadShare: false,
     uploadShareRecipients: new Set(),
     uploadPassword: '',
+    uploadUrlModal: false,
+    uploadUrl: '',
+    uploadUrlFavorite: false,
+    uploadUrlShare: false,
+    uploadUrlShareRecipients: new Set(),
+    uploadUrlPassword: '',
+    speedDialOpen: false,
+    contextMenu: null,
     createFolderModal: false,
     createFolderName: '',
     editItem: null,
@@ -71,6 +80,7 @@ export async function renderDashboard(container, onLogout) {
     bindLayoutEvents();
     update();
     init();
+    window.addEventListener('resize', update);
   }
 
   function layoutHtml() {
@@ -83,36 +93,18 @@ export async function renderDashboard(container, onLogout) {
             <button class="nav-item" data-view="favorites">${iconSvg('heart', 18)}<span>Favorites</span></button>
             <button class="nav-item" data-view="shared">${iconSvg('share', 18)}<span>Shared with me</span></button>
             <button class="nav-item" data-view="friends">${iconSvg('users', 18)}<span>Friends</span></button>
-            <button class="nav-item" data-view="apikeys">${iconSvg('box', 18)}<span>API Keys</span></button>
+            <button class="nav-item" data-view="profile">${iconSvg('user', 18)}<span>Profile</span></button>
           </nav>
-          <div class="storage">
-            <div class="storage-title">${iconSvg('hardDrive', 14)}<span>Storage</span></div>
-            <div class="storage-track"><div class="storage-fill" id="storage-fill"></div></div>
-            <div class="storage-text" id="storage-text">— used</div>
-          </div>
-          <div class="user">
-            <div class="user-avatar">${iconSvg('user', 16)}</div>
-            <div class="user-meta">
-              <div class="user-name">${escapeHtml(auth.user?.username || 'User')}</div>
-              <div class="user-email">${escapeHtml(auth.user?.email || '')}</div>
-            </div>
-            <button class="user-logout" id="logout-btn" title="Logout">${iconSvg('logOut', 16)}</button>
-          </div>
         </aside>
         <main class="main">
           <header class="page-header">
             <div class="header-left"><h1 class="page-title" id="page-title">My Files</h1><span class="item-count" id="item-count">0 items</span></div>
-            <div class="header-right">
-              <div class="search-wrap">${iconSvg('search', 16)}<input class="search-input" id="search-input" type="text" placeholder="Search items…" autocomplete="off" /></div>
-              ${state.view === 'files' ? `
-                <button class="btn btn-ghost" id="create-folder-btn">${iconSvg('plus', 16)}<span>New Folder</span></button>
-                <button class="btn btn-primary" id="upload-btn">${iconSvg('upload', 16)}<span>Upload</span></button>
-              ` : ''}
-            </div>
+            <div class="header-right"></div>
           </header>
           <div id="breadcrumb" class="breadcrumb hidden"></div>
           <div id="alert-container" class="alert-container"></div>
           <div id="upload-modal" class="modal-backdrop hidden"></div>
+          <div id="upload-url-modal" class="modal-backdrop hidden"></div>
           <div id="create-folder-modal" class="modal-backdrop hidden"></div>
           <div id="edit-item-modal" class="modal-backdrop hidden"></div>
           <div id="share-modal" class="modal-backdrop hidden"></div>
@@ -121,8 +113,16 @@ export async function renderDashboard(container, onLogout) {
           <div id="add-friend-modal" class="modal-backdrop hidden"></div>
           <div id="reveal-key-modal" class="modal-backdrop hidden"></div>
           <div id="bulk-action-modal" class="modal-backdrop hidden"></div>
+          <div id="context-menu" class="context-menu hidden"></div>
           <div id="toast-container" class="toast-container"></div>
           <section class="content" id="content"></section>
+          <nav class="bottom-nav">
+            <button class="bottom-nav-item" data-view="files">${iconSvg('home', 20)}<span>Files</span></button>
+            <button class="bottom-nav-item" data-view="favorites">${iconSvg('heart', 20)}<span>Favorites</span></button>
+            <button class="bottom-nav-item" data-view="shared">${iconSvg('share', 20)}<span>Shared</span></button>
+            <button class="bottom-nav-item" data-view="friends">${iconSvg('users', 20)}<span>Friends</span></button>
+            <button class="bottom-nav-item" data-view="profile">${iconSvg('user', 20)}<span>Profile</span></button>
+          </nav>
         </main>
       </div>
     `;
@@ -132,18 +132,30 @@ export async function renderDashboard(container, onLogout) {
     container.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
       btn.addEventListener('click', () => setView(btn.dataset.view));
     });
-    container.querySelector('#logout-btn').addEventListener('click', () => logout());
+    container.querySelectorAll('.bottom-nav-item[data-view]').forEach((btn) => {
+      btn.addEventListener('click', () => setView(btn.dataset.view));
+    });
     container.querySelector('#create-folder-btn')?.addEventListener('click', () => openCreateFolder());
     container.querySelector('#upload-btn')?.addEventListener('click', () => openUploadModal());
-    container.querySelector('#search-input').addEventListener('input', (e) => { state.searchQuery = e.target.value; update(); });
-    container.querySelector('#search-input').addEventListener('keydown', async (e) => {
-      if (e.key === 'Enter') {
-        const q = e.target.value.trim();
-        if (!q) return;
-        state.view = 'search';
-        await runSearch(q);
-      }
+    container.addEventListener('click', (e) => {
+      if (state.contextMenu && !e.target.closest('.context-menu')) closeContextMenu();
     });
+    const searchInput = container.querySelector('#search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => { state.searchQuery = e.target.value; update(); });
+      searchInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+          const q = e.target.value.trim();
+          if (!q) return;
+          state.view = 'search';
+          await runSearch(q);
+        }
+      });
+    }
+    const friendSearchInput = container.querySelector('#friend-search-input');
+    if (friendSearchInput) {
+      friendSearchInput.addEventListener('input', (e) => { state.friendSearchQuery = e.target.value.trim().toLowerCase(); update(); });
+    }
   }
 
   async function init() {
@@ -184,7 +196,7 @@ export async function renderDashboard(container, onLogout) {
         state.sharedItems = [];
         state.searchResults = null;
         await loadFriends();
-      } else if (state.view === 'apikeys') {
+      } else if (state.view === 'profile') {
         state.items = [];
         state.favoriteItems = [];
         state.sharedItems = [];
@@ -253,6 +265,11 @@ export async function renderDashboard(container, onLogout) {
   }
 
   function openAddFriend() { state.addFriendModal = true; state.addFriendEmail = ''; update(); }
+  function isMobile() { return window.innerWidth <= 768; }
+  function toggleSpeedDial() { state.speedDialOpen = !state.speedDialOpen; update(); }
+  function closeSpeedDial() { state.speedDialOpen = false; update(); }
+  function openContextMenu(item, x, y) { state.contextMenu = { item, x, y }; update(); }
+  function closeContextMenu() { state.contextMenu = null; update(); }
   function closeAddFriend() { state.addFriendModal = false; state.addFriendEmail = ''; update(); }
   async function addFriend() {
     const email = state.addFriendEmail.trim();
@@ -464,6 +481,16 @@ export async function renderDashboard(container, onLogout) {
     update();
   }
   function closeUploadModal() { state.uploadModal = false; state.pendingFiles = []; state.uploadShareRecipients = new Set(); state.uploadPassword = ''; update(); }
+  function openUploadUrlModal() {
+    state.uploadUrlModal = true;
+    state.uploadUrl = '';
+    state.uploadUrlFavorite = false;
+    state.uploadUrlShare = false;
+    state.uploadUrlShareRecipients = new Set();
+    state.uploadUrlPassword = '';
+    update();
+  }
+  function closeUploadUrlModal() { state.uploadUrlModal = false; state.uploadUrl = ''; state.uploadUrlShareRecipients = new Set(); state.uploadUrlPassword = ''; update(); }
   function openCreateFolder() { state.createFolderModal = true; state.createFolderName = ''; update(); }
   function closeCreateFolder() { state.createFolderModal = false; state.createFolderName = ''; update(); }
   function openEditItem(item) {
@@ -505,6 +532,51 @@ export async function renderDashboard(container, onLogout) {
     state.uploadModal = false;
     update();
     files.forEach((file) => uploadSingleFile(file, state.currentDirectory));
+  }
+
+  async function uploadFromUrl() {
+    const urls = state.uploadUrl.split('\n').map((u) => u.trim()).filter(Boolean);
+    if (urls.length === 0) return;
+    state.uploadUrlModal = false;
+    state.uploading = true;
+    const shareWith = state.uploadUrlShare ? Array.from(state.uploadUrlShareRecipients) : [];
+    const baseMeta = {
+      directory: state.currentDirectory,
+      favorite: state.uploadUrlFavorite,
+      password: state.uploadUrlPassword,
+      share_with: shareWith,
+    };
+    const entries = urls.map((url) => ({
+      id: Math.random().toString(36).slice(2),
+      url,
+      name: url.split('/').pop() || 'URL download',
+      progress: 0,
+      done: false,
+      error: '',
+    }));
+    state.uploads.push(...entries);
+    update();
+    for (const entry of entries) {
+      try {
+        await uploadByUrl({ url: entry.url, ...baseMeta });
+        state.uploads = state.uploads.map((u) => u.id === entry.id ? { ...u, progress: 100, done: true } : u);
+      } catch (e) {
+        state.uploads = state.uploads.map((u) => u.id === entry.id ? { ...u, error: e.message } : u);
+      }
+      update();
+    }
+    await load();
+    const failed = entries.some((entry) => state.uploads.find((u) => u.id === entry.id)?.error);
+    if (!failed) showSuccess('Files downloaded from URL');
+    state.uploading = state.uploads.some((u) => !u.done && !u.error);
+    state.uploadUrl = '';
+    state.uploadUrlPassword = '';
+    state.uploadUrlShareRecipients = new Set();
+    update();
+    setTimeout(() => {
+      state.uploads = state.uploads.filter((u) => !entries.find((entry) => entry.id === u.id));
+      update();
+    }, 3000);
   }
 
   async function uploadSingleFile(file, directory) {
@@ -601,6 +673,7 @@ export async function renderDashboard(container, onLogout) {
     }
   }
 
+  let lastView = null;
   function updateSafe() {
     const used = auth.user?.storage_used || 0;
     const quota = auth.user?.storage_quota || auth.user?.total_storage || 0;
@@ -612,8 +685,14 @@ export async function renderDashboard(container, onLogout) {
       const usedStr = `${fmtSize(used)} used`;
       text.textContent = quota ? `${usedStr} · ${pct}% of ${fmtSize(quota)}` : `${usedStr} · Unlimited`;
     }
-
+    if (lastView !== state.view) {
+      renderHeader();
+      lastView = state.view;
+    }
     container.querySelectorAll('.nav-item[data-view]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.view === state.view);
+    });
+    container.querySelectorAll('.bottom-nav-item[data-view]').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.view === state.view);
     });
 
@@ -622,20 +701,21 @@ export async function renderDashboard(container, onLogout) {
 
     const pageTitleEl = container.querySelector('#page-title');
     const itemCountEl = container.querySelector('#item-count');
-    const titles = { files: 'My Files', favorites: 'Favorites', shared: 'Shared with me', friends: 'Friends', apikeys: 'API Keys', search: `Search: ${state.searchQuery}` };
+    const titles = { files: 'My Files', favorites: 'Favorites', shared: 'Shared with me', friends: 'Friends', profile: 'Profile', search: `Search: ${state.searchQuery}` };
     if (pageTitleEl) pageTitleEl.textContent = titles[state.view] || 'My Files';
     let count = 0;
     if (state.view === 'search') count = state.searchResults?.length ?? 0;
     else if (state.view === 'favorites') count = (state.favoriteItems ?? []).length;
     else if (state.view === 'shared') count = (state.sharedItems ?? []).length;
     else if (state.view === 'friends') count = (state.friends ?? []).length;
-    else if (state.view === 'apikeys') count = (state.apiKeys ?? []).length;
+    else if (state.view === 'profile') count = null;
     else count = (state.items ?? []).length;
-    if (itemCountEl) itemCountEl.textContent = `${count} items`;
+    if (itemCountEl) itemCountEl.textContent = count === null ? '' : `${count} items`;
 
     renderBreadcrumb();
     renderAlert();
     renderUploadModal();
+    renderUploadUrlModal();
     renderCreateFolderModal();
     renderEditItemModal();
     renderShareModal();
@@ -644,8 +724,51 @@ export async function renderDashboard(container, onLogout) {
     renderAddFriendModal();
     renderRevealKeyModal();
     renderBulkActionModal();
+    renderContextMenu();
     renderToasts();
     renderContent();
+  }
+
+  function renderHeader() {
+    const el = container.querySelector('.header-right');
+    if (!el) return;
+    const searchItem = ['files', 'favorites', 'shared', 'search'].includes(state.view) ? `
+      <div class="search-wrap">${iconSvg('search', 16)}<input class="search-input" id="search-input" type="text" value="${escapeHtml(state.searchQuery)}" placeholder="Search items…" autocomplete="off" /></div>
+    ` : '';
+    const friendSearch = state.view === 'friends' ? `
+      <div class="search-wrap">${iconSvg('search', 16)}<input class="search-input" id="friend-search-input" type="text" value="${escapeHtml(state.friendSearchQuery)}" placeholder="Find friends…" autocomplete="off" /></div>
+    ` : '';
+    const headerBtns = state.view === 'files' ? `
+      <div class="header-btns">
+        <button class="btn btn-ghost" id="create-folder-btn" title="New Folder">${iconSvg('plus', 16)}<span class="btn-label">New Folder</span></button>
+        <button class="btn btn-primary" id="upload-btn" title="Upload">${iconSvg('upload', 16)}<span class="btn-label">Upload</span></button>
+      </div>
+    ` : '';
+    el.innerHTML = searchItem + friendSearch + headerBtns;
+
+    const searchInput = el.querySelector('#search-input');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => { state.searchQuery = e.target.value; update(); });
+      searchInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+          const q = e.target.value.trim();
+          if (!q) return;
+          state.view = 'search';
+          await runSearch(q);
+        }
+      });
+    }
+    const friendSearchInput = el.querySelector('#friend-search-input');
+    if (friendSearchInput) {
+      friendSearchInput.addEventListener('input', (e) => { state.friendSearchQuery = e.target.value.trim().toLowerCase(); update(); });
+    }
+    const uploadBtn = el.querySelector('#upload-btn');
+    if (uploadBtn) {
+      uploadBtn.disabled = !state.uploadConfig;
+      uploadBtn.addEventListener('click', () => openUploadModal());
+    }
+    const createFolderBtn = el.querySelector('#create-folder-btn');
+    if (createFolderBtn) createFolderBtn.addEventListener('click', () => openCreateFolder());
   }
 
   function renderBreadcrumb() {
@@ -672,19 +795,21 @@ export async function renderDashboard(container, onLogout) {
     if (!el) return;
     if (state.loading) { el.innerHTML = `<div class="skeleton-table"><div class="skeleton-head"></div>${Array(6).fill('<div class="skeleton-row"></div>').join('')}</div>`; return; }
     if (state.view === 'friends') { renderFriends(el); return; }
-    if (state.view === 'apikeys') { renderApiKeys(el); return; }
-    if (state.view === 'search') { renderSearchResults(el); return; }
+    if (state.view === 'profile') { renderProfile(el); return; }
 
     let items = [];
-    if (state.view === 'favorites') items = state.favoriteItems ?? [];
+    if (state.view === 'search') items = state.searchResults ?? [];
+    else if (state.view === 'favorites') items = state.favoriteItems ?? [];
     else if (state.view === 'shared') items = state.sharedItems ?? [];
     else items = state.items ?? [];
 
     const isFilesView = state.view === 'files';
+    const isSearch = state.view === 'search';
     const selectable = isFilesView || state.view === 'favorites';
+    const useCards = isMobile() && (isFilesView || isSearch || state.view === 'favorites' || state.view === 'shared');
     const selectedFiles = items.filter((it) => it.type === 'file' && state.selectedItemPaths.has(it.path || it.item_path));
     const allFav = selectedFiles.length > 0 && selectedFiles.every((it) => it.is_favorite);
-    const bulkBar = selectable && state.selectedItemPaths.size > 0 ? `
+    const bulkBar = !useCards && selectable && state.selectedItemPaths.size > 0 ? `
       <div class="bulk-bar card">
         <span>${state.selectedItemPaths.size} selected</span>
         <div class="bulk-actions">
@@ -698,9 +823,20 @@ export async function renderDashboard(container, onLogout) {
     ` : '';
 
     if (items.length === 0) {
-      const emptyTitle = state.view === 'favorites' ? 'No favorites' : state.view === 'shared' ? 'No shared files' : 'Nothing here yet';
-      const emptyMsg = state.view === 'favorites' ? 'Star files to see them here.' : state.view === 'shared' ? 'Friends have not shared any files with you yet.' : state.currentDirectory ? 'This folder is empty.' : 'Upload a file or create a folder to get started.';
+      const emptyTitle = state.view === 'favorites' ? 'No favorites' : state.view === 'shared' ? 'No shared files' : state.view === 'search' ? 'No results' : 'Nothing here yet';
+      const emptyMsg = state.view === 'favorites' ? 'Star files to see them here.' : state.view === 'shared' ? 'Friends have not shared any files with you yet.' : state.view === 'search' ? `No items match "${escapeHtml(state.searchQuery)}".` : state.currentDirectory ? 'This folder is empty.' : 'Upload a file or create a folder to get started.';
       el.innerHTML = bulkBar + emptyStateHtml(emptyTitle, emptyMsg);
+      return;
+    }
+
+    if (useCards) {
+      el.innerHTML = `
+        ${bulkBar}
+        <div class="file-card-grid">
+          ${renderCards(items, isFilesView)}
+        </div>
+      `;
+      bindCardEvents(el, items);
       return;
     }
 
@@ -805,6 +941,119 @@ export async function renderDashboard(container, onLogout) {
     el.querySelectorAll('[data-action="bulk-delete"]').forEach((b) => b.addEventListener('click', deleteSelectedItems));
   }
 
+  function renderCards(items) {
+    return items.map((item) => {
+      const isFolder = item.type === 'folder';
+      const name = item.name || item.item_name || '';
+      const icon = isFolder ? iconSvg('folder', 40) : iconSvg(fileIconName(item), 40);
+      return `
+        <div class="file-card ${isFolder ? 'folder-card' : 'file-card'}" data-path="${escapeHtml(item.path || item.item_path || '')}" tabindex="0">
+          <div class="file-card-icon">${icon}</div>
+          <div class="file-card-name">${escapeHtml(name)}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function bindCardEvents(el, items) {
+    el.querySelectorAll('.file-card').forEach((card) => {
+      const path = card.dataset.path;
+      const item = items.find((it) => (it.path || it.item_path) === path);
+      if (!item) return;
+
+      let longPressTimer = null;
+      let longPressTriggered = false;
+      const startLongPress = (e) => {
+        longPressTriggered = false;
+        longPressTimer = setTimeout(() => {
+          longPressTriggered = true;
+          const evt = e.touches ? e.touches[0] : e;
+          openContextMenu(item, evt.clientX, evt.clientY);
+        }, 500);
+      };
+      const cancelLongPress = () => {
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      };
+
+      card.addEventListener('touchstart', startLongPress, { passive: true });
+      card.addEventListener('touchend', cancelLongPress);
+      card.addEventListener('touchmove', cancelLongPress);
+      card.addEventListener('touchcancel', cancelLongPress);
+      card.addEventListener('mousedown', startLongPress);
+      card.addEventListener('mouseup', cancelLongPress);
+      card.addEventListener('mouseleave', cancelLongPress);
+      card.addEventListener('contextmenu', (e) => { e.preventDefault(); openContextMenu(item, e.clientX, e.clientY); });
+      card.addEventListener('click', (e) => {
+        if (longPressTriggered) { e.preventDefault(); e.stopPropagation(); return; }
+        if (item.type === 'folder') openFolder(item);
+        else downloadItem(item, true);
+      });
+    });
+  }
+
+  function renderContextMenu() {
+    const el = container.querySelector('#context-menu');
+    if (!el) return;
+    if (!state.contextMenu) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    el.classList.remove('hidden');
+    const { item, x, y } = state.contextMenu;
+    const isFolder = item.type === 'folder';
+    const isShared = state.view === 'shared';
+    const name = item.name || item.item_name || '';
+
+    const menuItems = [];
+    if (isFolder) {
+      menuItems.push({ action: 'open', label: 'Open', icon: 'folder' });
+      menuItems.push({ action: 'rename', label: 'Rename', icon: 'edit' });
+      menuItems.push({ action: 'delete', label: 'Delete', icon: 'trash', danger: true });
+    } else if (isShared) {
+      menuItems.push({ action: 'download', label: 'Download', icon: 'download' });
+      menuItems.push({ action: 'owner', label: `Owner: ${escapeHtml(item.owner_name || '')}`, icon: 'user', disabled: true });
+    } else {
+      menuItems.push({ action: 'preview', label: 'Preview', icon: 'eye' });
+      menuItems.push({ action: 'download', label: 'Download', icon: 'download' });
+      menuItems.push({ action: 'rename', label: 'Rename', icon: 'edit' });
+      menuItems.push({ action: 'favorite', label: item.is_favorite ? 'Remove from favorites' : 'Add to favorites', icon: item.is_favorite ? 'starOff' : 'star' });
+      menuItems.push({ action: 'share', label: item.share_count ? `Shared (${item.share_count})` : 'Share', icon: 'share' });
+      menuItems.push({ action: 'lock', label: item.is_locked ? 'Change password' : 'Set password', icon: 'lock' });
+      menuItems.push({ action: 'delete', label: 'Delete', icon: 'trash', danger: true });
+    }
+
+    el.innerHTML = `
+      <div class="context-menu-head">${escapeHtml(name)}</div>
+      ${menuItems.map((m) => `
+        <button class="context-menu-item ${m.danger ? 'danger' : ''}" data-action="${m.action}" ${m.disabled ? 'disabled' : ''}>
+          ${iconSvg(m.icon, 18)}<span>${m.label}</span>
+        </button>
+      `).join('')}
+    `;
+
+    // Position the menu inside the viewport.
+    const rect = el.getBoundingClientRect();
+    const menuWidth = rect.width || 200;
+    const menuHeight = rect.height || 250;
+    let left = Math.min(x, window.innerWidth - menuWidth - 8);
+    let top = Math.min(y, window.innerHeight - menuHeight - 8);
+    if (left < 8) left = 8;
+    if (top < 8) top = 8;
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+
+    el.querySelectorAll('.context-menu-item').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        closeContextMenu();
+        if (action === 'open' || action === 'preview') { if (isFolder) openFolder(item); else downloadItem(item, action === 'preview'); }
+        else if (action === 'download') downloadItem(item, false);
+        else if (action === 'rename') openEditItem(item);
+        else if (action === 'favorite') toggleFavorite(item);
+        else if (action === 'share') openShareModal(item);
+        else if (action === 'lock') openLockModal(item);
+        else if (action === 'delete') deleteItemByPath(item);
+      });
+    });
+  }
+
   function renderSearchResults(el) {
     const items = state.searchResults || [];
     if (items.length === 0) { el.innerHTML = emptyStateHtml('No results', `No items match "${escapeHtml(state.searchQuery)}".`); return; }
@@ -818,9 +1067,21 @@ export async function renderDashboard(container, onLogout) {
   }
 
   function renderFriends(el) {
-    const incoming = state.friendRequests.filter((r) => r.status === 'pending' && r.recipient_user_id === auth.user?.id);
-    const outgoing = state.friendRequests.filter((r) => r.status === 'pending' && r.requester_user_id === auth.user?.id);
-    const incomingCount = incoming.length;
+    const q = state.friendSearchQuery;
+    const matchesFriend = (f) => {
+      if (!q) return true;
+      return (f.friend_name || '').toLowerCase().includes(q) || (f.friend_email || '').toLowerCase().includes(q);
+    };
+    const matchesRequest = (r) => {
+      if (!q) return true;
+      return (r.requester_name || r.recipient_name || '').toLowerCase().includes(q) || (r.requester_email || r.recipient_email || '').toLowerCase().includes(q);
+    };
+    const friends = (state.friends ?? []).filter(matchesFriend);
+    const incomingAll = state.friendRequests.filter((r) => r.status === 'pending' && r.recipient_user_id === auth.user?.id);
+    const outgoingAll = state.friendRequests.filter((r) => r.status === 'pending' && r.requester_user_id === auth.user?.id);
+    const incoming = incomingAll.filter(matchesRequest);
+    const outgoing = outgoingAll.filter(matchesRequest);
+    const incomingCount = incomingAll.length;
     el.innerHTML = `
       <div class="card friends-view">
         <div class="friends-view-head"><h3>Friends</h3><button class="btn btn-primary" id="open-add-friend">${iconSvg('plus', 16)}<span>Add friend</span></button></div>
@@ -829,9 +1090,9 @@ export async function renderDashboard(container, onLogout) {
           <button class="tab ${state.friendsTab === 'requests' ? 'active' : ''}" data-tab="requests">Requests ${incomingCount > 0 ? `<span class="badge">${incomingCount}</span>` : ''}</button>
         </div>
         ${state.friendsTab === 'friends' ? `
-          ${(state.friends ?? []).length === 0 ? '<p class="muted">No friends yet.</p>' : `
+          ${friends.length === 0 ? `<p class="muted">${q ? 'No friends match your search.' : 'No friends yet.'}</p>` : `
             <div class="friend-list">
-              ${(state.friends ?? []).map((f) => `
+              ${friends.map((f) => `
                 <div class="friend-row">
                   <span>${escapeHtml(f.friend_name)} <span class="muted">(${escapeHtml(f.friend_email)})</span></span>
                   <button class="action-btn danger" data-remove="${f.id}">${iconSvg('trash', 14)}</button>
@@ -840,7 +1101,7 @@ export async function renderDashboard(container, onLogout) {
             </div>
           `}
         ` : `
-          ${incoming.length === 0 && outgoing.length === 0 ? '<p class="muted">No pending requests.</p>' : ''}
+          ${incoming.length === 0 && outgoing.length === 0 ? `<p class="muted">${q ? 'No requests match your search.' : 'No pending requests.'}</p>` : ''}
           ${incoming.length > 0 ? `
             <div class="request-section">
               <label class="muted small">Incoming</label>
@@ -891,6 +1152,37 @@ export async function renderDashboard(container, onLogout) {
       const r = state.friendRequests.find((x) => String(x.id) === btn.dataset.cancel);
       if (r) cancelRequest(r);
     }));
+  }
+
+  function renderProfile(el) {
+    const used = auth.user?.storage_used || 0;
+    const quota = auth.user?.storage_quota || auth.user?.total_storage || 0;
+    const pct = quota ? Math.min(100, Math.round((used / quota) * 100)) : 0;
+    el.innerHTML = `
+      <div class="card profile-view">
+        <div class="profile-head">
+          <div class="profile-avatar">${iconSvg('user', 32)}</div>
+          <div class="profile-meta">
+            <div class="profile-name">${escapeHtml(auth.user?.username || 'User')}</div>
+            <div class="profile-email muted">${escapeHtml(auth.user?.email || '')}</div>
+          </div>
+        </div>
+        <div class="profile-storage">
+          <div class="profile-storage-title">
+            <span class="storage-title">${iconSvg('hardDrive', 14)}<span>Storage</span></span>
+            <span class="storage-text">${quota ? `${fmtSize(used)} / ${fmtSize(quota)} (${pct}%)` : `${fmtSize(used)} used`}</span>
+          </div>
+          <div class="storage-track"><div class="storage-fill" style="width:${pct}%"></div></div>
+        </div>
+        <div id="profile-api-keys"></div>
+        <div class="profile-actions">
+          <button class="btn btn-danger" id="profile-logout">${iconSvg('logOut', 16)}<span>Logout</span></button>
+        </div>
+      </div>
+    `;
+    el.querySelector('#profile-logout')?.addEventListener('click', () => logout());
+    const keysEl = el.querySelector('#profile-api-keys');
+    if (keysEl) renderApiKeys(keysEl);
   }
 
   function renderApiKeys(el) {
@@ -959,7 +1251,7 @@ export async function renderDashboard(container, onLogout) {
     const { id, name, password, key, error } = state.revealKey;
     el.innerHTML = `
       <div class="modal card reveal-key-modal">
-        <div class="modal-head"><h3>Reveal API Key</h3><button class="action-btn modal-close" data-close="reveal-key" aria-label="Close">${iconSvg('x', 16)}</button></div>
+        <div class="modal-head"><h3>Reveal API Key</h3><button class="action-btn modal-close" data-close="reveal-key" aria-label="Close">${iconSvg('close', 16)}</button></div>
         <div class="modal-body">
           <p class="muted">Enter your account password to view the key for <strong>${escapeHtml(name)}</strong>.</p>
           ${key ? `
@@ -1036,7 +1328,7 @@ export async function renderDashboard(container, onLogout) {
     `;
     el.innerHTML = `
       <div class="modal upload-modal card">
-        <div class="modal-head"><h3>Upload Files</h3><button class="action-btn modal-close" id="close-upload-modal" aria-label="Close">${iconSvg('x', 16)}</button></div>
+        <div class="modal-head"><h3>Upload Files</h3><button class="action-btn modal-close" id="close-upload-modal" aria-label="Close">${iconSvg('close', 16)}</button></div>
         <div class="modal-body">
           ${fileList}
           <div class="upload-modal-options">
@@ -1062,6 +1354,7 @@ export async function renderDashboard(container, onLogout) {
               <label class="muted small">File password (optional)</label>
               ${passwordInputHtml({ id: 'upload-password', placeholder: 'Leave empty for no lock', value: state.uploadPassword })}
             </div>
+            <button class="btn btn-sm btn-ghost upload-url-link" id="open-upload-url-modal" type="button">${iconSvg('link', 16)} Upload from URL</button>
           </div>
         </div>
         <div class="modal-actions">
@@ -1073,6 +1366,7 @@ export async function renderDashboard(container, onLogout) {
     el.querySelector('#close-upload-modal').addEventListener('click', closeUploadModal);
     el.querySelector('#cancel-upload').addEventListener('click', closeUploadModal);
     el.querySelector('#confirm-upload').addEventListener('click', startUpload);
+    el.querySelector('#open-upload-url-modal')?.addEventListener('click', () => { closeUploadModal(); openUploadUrlModal(); });
     const favInput = el.querySelector('#upload-favorite');
     if (favInput) favInput.addEventListener('change', (e) => { state.uploadFavorite = e.target.checked; update(); });
     const shareToggle = el.querySelector('#upload-share-toggle');
@@ -1107,6 +1401,73 @@ export async function renderDashboard(container, onLogout) {
     el.addEventListener('click', (e) => { if (e.target === el) closeUploadModal(); });
   }
 
+  function renderUploadUrlModal() {
+    const el = container.querySelector('#upload-url-modal');
+    if (!el) return;
+    if (!state.uploadUrlModal) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    el.classList.remove('hidden');
+    el.innerHTML = `
+      <div class="modal upload-url-modal card">
+        <div class="modal-head"><h3>Upload from URL</h3><button class="action-btn modal-close" id="close-upload-url-modal" aria-label="Close">${iconSvg('close', 16)}</button></div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">File URLs</label>
+            <textarea id="upload-url-input" class="input" rows="4" placeholder="https://example.com/file.pdf&#10;https://example.com/image.jpg">${escapeHtml(state.uploadUrl)}</textarea>
+          </div>
+          <div class="upload-modal-options">
+            <label class="upload-option-row">
+              <input type="checkbox" id="upload-url-favorite" ${state.uploadUrlFavorite ? 'checked' : ''} />
+              <span>Add to favorites</span>
+            </label>
+            <label class="upload-option-row">
+              <input type="checkbox" id="upload-url-share-toggle" ${state.uploadUrlShare ? 'checked' : ''} />
+              <span>Share with friends</span>
+            </label>
+            ${state.uploadUrlShare ? `
+              <div class="upload-share-friends">
+                ${(state.friends ?? []).length > 0 ? (state.friends ?? []).map((f) => `
+                  <label class="share-friend-row">
+                    <input type="checkbox" value="${escapeHtml(f.friend_email)}" ${state.uploadUrlShareRecipients.has(f.friend_email) ? 'checked' : ''} />
+                    <span>${escapeHtml(f.friend_name)} <span class="muted">(${escapeHtml(f.friend_email)})</span></span>
+                  </label>
+                `).join('') : '<p class="muted small">No friends yet.</p>'}
+              </div>
+            ` : ''}
+            <div class="upload-modal-password">
+              <label class="muted small">File password (optional)</label>
+              ${passwordInputHtml({ id: 'upload-url-password', placeholder: 'Leave empty for no lock', value: state.uploadUrlPassword })}
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="cancel-upload-url">Cancel</button>
+          <button class="btn btn-primary" id="confirm-upload-url">Download</button>
+        </div>
+      </div>
+    `;
+    el.querySelector('#close-upload-url-modal').addEventListener('click', closeUploadUrlModal);
+    el.querySelector('#cancel-upload-url').addEventListener('click', closeUploadUrlModal);
+    el.querySelector('#confirm-upload-url').addEventListener('click', uploadFromUrl);
+    const urlInput = el.querySelector('#upload-url-input');
+    urlInput.focus();
+    urlInput.addEventListener('input', (e) => { state.uploadUrl = e.target.value; });
+    const favInput = el.querySelector('#upload-url-favorite');
+    if (favInput) favInput.addEventListener('change', (e) => { state.uploadUrlFavorite = e.target.checked; update(); });
+    const shareToggle = el.querySelector('#upload-url-share-toggle');
+    if (shareToggle) shareToggle.addEventListener('change', (e) => { state.uploadUrlShare = e.target.checked; update(); });
+    bindPasswordToggles(el);
+    const pwInput = el.querySelector('#upload-url-password');
+    if (pwInput) pwInput.addEventListener('input', (e) => { state.uploadUrlPassword = e.target.value; });
+    el.querySelectorAll('.upload-share-friends .share-friend-row input').forEach((cb) => {
+      cb.addEventListener('change', (e) => {
+        if (e.target.checked) state.uploadUrlShareRecipients.add(e.target.value);
+        else state.uploadUrlShareRecipients.delete(e.target.value);
+        update();
+      });
+    });
+    el.addEventListener('click', (e) => { if (e.target === el) closeUploadUrlModal(); });
+  }
+
   function renderCreateFolderModal() {
     const el = container.querySelector('#create-folder-modal');
     if (!el) return;
@@ -1114,7 +1475,7 @@ export async function renderDashboard(container, onLogout) {
     el.classList.remove('hidden');
     el.innerHTML = `
       <div class="modal card">
-        <div class="modal-head"><h3>New Folder</h3><button class="action-btn modal-close" id="close-create-folder" aria-label="Close">${iconSvg('x', 16)}</button></div>
+        <div class="modal-head"><h3>New Folder</h3><button class="action-btn modal-close" id="close-create-folder" aria-label="Close">${iconSvg('close', 16)}</button></div>
         <div class="modal-body">
           <label class="muted small form-label">Folder name</label>
           <input type="text" id="folder-name-input" class="input" value="${escapeHtml(state.createFolderName)}" placeholder="e.g. documents" />
@@ -1143,7 +1504,7 @@ export async function renderDashboard(container, onLogout) {
     const noun = state.editItem.type === 'folder' ? 'folder' : 'file';
     el.innerHTML = `
       <div class="modal card">
-        <div class="modal-head"><h3>Rename ${noun}</h3><button class="action-btn modal-close" id="close-edit-item" aria-label="Close">${iconSvg('x', 16)}</button></div>
+        <div class="modal-head"><h3>Rename ${noun}</h3><button class="action-btn modal-close" id="close-edit-item" aria-label="Close">${iconSvg('close', 16)}</button></div>
         <div class="modal-body">
           <label class="muted small form-label">Name</label>
           <input type="text" id="edit-item-name" class="input" value="${escapeHtml(state.editItemName)}" placeholder="new name" />
@@ -1179,7 +1540,7 @@ export async function renderDashboard(container, onLogout) {
     `).join('');
     el.innerHTML = `
       <div class="modal card">
-        <div class="modal-head"><h3>Share ${escapeHtml(state.shareItem.name)}</h3><button class="action-btn modal-close" id="close-share-modal" aria-label="Close">${iconSvg('x', 16)}</button></div>
+        <div class="modal-head"><h3>Share ${escapeHtml(state.shareItem.name)}</h3><button class="action-btn modal-close" id="close-share-modal" aria-label="Close">${iconSvg('close', 16)}</button></div>
         <div class="modal-body">
           <div class="share-friend-list">
             ${(state.friends ?? []).length > 0 ? friendOptions : '<p class="muted small">No friends yet.</p>'}
@@ -1221,7 +1582,7 @@ export async function renderDashboard(container, onLogout) {
     const locked = state.lockItem.is_locked;
     el.innerHTML = `
       <div class="modal card">
-        <div class="modal-head"><h3>${locked ? 'Change Password' : 'Set Password'}</h3><button class="action-btn modal-close" id="close-lock-modal" aria-label="Close">${iconSvg('x', 16)}</button></div>
+        <div class="modal-head"><h3>${locked ? 'Change Password' : 'Set Password'}</h3><button class="action-btn modal-close" id="close-lock-modal" aria-label="Close">${iconSvg('close', 16)}</button></div>
         <div class="modal-body">
           <p class="muted small">${locked ? 'Enter a new password to replace the existing one, or leave empty to remove the lock.' : 'Leave empty to remove the lock.'}</p>
           ${passwordInputHtml({ id: 'lock-password', placeholder: 'File password', value: state.lockPassword })}
@@ -1250,7 +1611,7 @@ export async function renderDashboard(container, onLogout) {
     const actionLabel = state.unlockAction === 'preview' ? 'Preview' : 'Download';
     el.innerHTML = `
       <div class="modal card">
-        <div class="modal-head"><h3>${actionLabel} Locked File</h3><button class="action-btn modal-close" id="close-unlock-modal" aria-label="Close">${iconSvg('x', 16)}</button></div>
+        <div class="modal-head"><h3>${actionLabel} Locked File</h3><button class="action-btn modal-close" id="close-unlock-modal" aria-label="Close">${iconSvg('close', 16)}</button></div>
         <div class="modal-body">
           <p class="muted small">Enter the file password to ${state.unlockAction === 'preview' ? 'preview' : 'download'} <strong>${escapeHtml(state.unlockItem.name || state.unlockItem.item_name || '')}</strong>.</p>
           ${passwordInputHtml({ id: 'unlock-password', placeholder: 'File password', value: state.unlockPassword })}
@@ -1279,7 +1640,7 @@ export async function renderDashboard(container, onLogout) {
     el.classList.remove('hidden');
     el.innerHTML = `
       <div class="modal card">
-        <div class="modal-head"><h3>Add Friend</h3><button class="action-btn modal-close" id="close-add-friend" aria-label="Close">${iconSvg('x', 16)}</button></div>
+        <div class="modal-head"><h3>Add Friend</h3><button class="action-btn modal-close" id="close-add-friend" aria-label="Close">${iconSvg('close', 16)}</button></div>
         <div class="modal-body">
           <input type="email" id="add-friend-email" class="input" value="${escapeHtml(state.addFriendEmail)}" placeholder="friend@example.com" />
         </div>
@@ -1314,7 +1675,7 @@ export async function renderDashboard(container, onLogout) {
       `).join('');
       el.innerHTML = `
         <div class="modal card">
-          <div class="modal-head"><h3>Share Selected Files</h3><button class="action-btn modal-close" id="close-bulk-modal" aria-label="Close">${iconSvg('x', 16)}</button></div>
+          <div class="modal-head"><h3>Share Selected Files</h3><button class="action-btn modal-close" id="close-bulk-modal" aria-label="Close">${iconSvg('close', 16)}</button></div>
           <div class="modal-body">
             <div class="share-friend-list">${(state.friends ?? []).length > 0 ? friendOptions : '<p class="muted small">No friends yet.</p>'}</div>
           </div>
@@ -1335,7 +1696,7 @@ export async function renderDashboard(container, onLogout) {
     } else {
       el.innerHTML = `
         <div class="modal card">
-          <div class="modal-head"><h3>Set Password</h3><button class="action-btn modal-close" id="close-bulk-modal" aria-label="Close">${iconSvg('x', 16)}</button></div>
+          <div class="modal-head"><h3>Set Password</h3><button class="action-btn modal-close" id="close-bulk-modal" aria-label="Close">${iconSvg('close', 16)}</button></div>
           <div class="modal-body">
             ${passwordInputHtml({ id: 'bulk-password', placeholder: 'Leave empty to remove', value: state.bulkPassword })}
           </div>
@@ -1372,8 +1733,8 @@ export async function renderDashboard(container, onLogout) {
     const active = state.uploads.filter((u) => !u.done && !u.error);
     if (active.length === 0) { el.innerHTML = ''; return; }
     el.innerHTML = active.map((u) => `
-      <div class="toast-card">
-        <div class="toast-row"><span class="toast-name">${escapeHtml(u.name)}</span><span class="muted small">Uploading…</span></div>
+      <div class="toast-card upload-toast">
+        <div class="toast-pct">${u.progress}%</div>
         <div class="toast-progress"><div class="toast-bar" style="width:${u.progress}%"></div></div>
       </div>
     `).join('');

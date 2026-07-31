@@ -85,6 +85,7 @@ func Register(app *fiber.App, deps Deps) {
 	items.Get("/detail", deps.ItemHandler.Detail)
 	items.Post("/folder", deps.ItemHandler.CreateFolder)
 	items.Post("/upload", deps.ItemHandler.Upload)
+	items.Post("/upload-by-url", deps.ItemHandler.UploadByURL)
 	items.Put("/update", deps.ItemHandler.Update)
 	items.Delete("/delete", deps.ItemHandler.Delete)
 	items.Get("/download", deps.ItemHandler.Download)

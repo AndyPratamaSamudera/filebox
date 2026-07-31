@@ -106,7 +106,9 @@ func (h *APIKeyHandler) List(c *fiber.Ctx) error {
 // Reveal godoc
 // @Summary      Reveal API key
 // @Description  Return the plaintext API key after verifying the account password.
-//               The same key can be revealed multiple times; it does not need to be recreated.
+//
+//	The same key can be revealed multiple times; it does not need to be recreated.
+//
 // @Tags         api-keys
 // @Accept       json
 // @Produce      json

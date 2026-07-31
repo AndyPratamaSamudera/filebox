@@ -1,7 +1,7 @@
-import { auth } from './auth.js';
-import { renderLogin } from './pages/login.js';
-import { renderRegister } from './pages/register.js';
-import { renderDashboard } from './pages/dashboard.js';
+import { auth } from './auth.js?v=14';
+import { renderLogin } from './pages/login.js?v=14';
+import { renderRegister } from './pages/register.js?v=14';
+import { renderDashboard } from './pages/dashboard.js?v=14';
 
 const app = document.getElementById('app');
 

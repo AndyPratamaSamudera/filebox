@@ -11,20 +11,20 @@ import (
 
 // AdminConfig is the aggregated configuration exposed to the admin page.
 type AdminConfig struct {
-	DatabaseHost      string `json:"database_host"`
-	DatabasePort      int    `json:"database_port"`
-	DatabaseName      string `json:"database_name"`
-	UploadMaxDirect   int64  `json:"upload_max_direct"`
-	ChunkSize         int64  `json:"chunk_size"`
-	StoragePath       string `json:"storage_path"`
-	DefaultUserQuota  uint64 `json:"default_user_quota"`
-	HasAdminPage      bool   `json:"has_admin_page"`
+	DatabaseHost     string `json:"database_host"`
+	DatabasePort     int    `json:"database_port"`
+	DatabaseName     string `json:"database_name"`
+	UploadMaxDirect  int64  `json:"upload_max_direct"`
+	ChunkSize        int64  `json:"chunk_size"`
+	StoragePath      string `json:"storage_path"`
+	DefaultUserQuota uint64 `json:"default_user_quota"`
+	HasAdminPage     bool   `json:"has_admin_page"`
 }
 
 // AdminService provides operations for the optional admin page.
 type AdminService struct {
-	cfg     *config.Config
-	setRepo *repository.SettingRepository
+	cfg      *config.Config
+	setRepo  *repository.SettingRepository
 	userRepo *repository.UserRepository
 }
 

@@ -34,13 +34,22 @@ type ItemFolderRequest struct {
 	Directory string `json:"directory"`
 }
 
+// ItemUploadByURLRequest is the body for importing a file from a public URL.
+type ItemUploadByURLRequest struct {
+	Directory string   `json:"directory"`
+	URL       string   `json:"url"`
+	Favorite  bool     `json:"favorite"`
+	ShareWith []string `json:"share_with"`
+	Password  string   `json:"password"`
+}
+
 // ItemUpdateRequest is the body for updating an item.
 type ItemUpdateRequest struct {
-	Directory string   `json:"directory"`
-	Name      string   `json:"name,omitempty"`
-	IsFavorite *bool   `json:"is_favorite,omitempty"`
-	Shares    []string `json:"shares,omitempty"`
-	Password  string   `json:"password,omitempty"`
+	Directory  string   `json:"directory"`
+	Name       string   `json:"name,omitempty"`
+	IsFavorite *bool    `json:"is_favorite,omitempty"`
+	Shares     []string `json:"shares,omitempty"`
+	Password   string   `json:"password,omitempty"`
 }
 
 // ItemDeleteRequest is the query for deleting an item.
@@ -203,6 +212,44 @@ func (h *ItemHandler) Upload(c *fiber.Ctx) error {
 		return respondError(c, err)
 	}
 	return utils.Created(c, "file uploaded", file)
+}
+
+// UploadByURL godoc
+// @Summary      Upload a file from a URL
+// @Description  Download a file from a public URL and store it like a normal upload. Only http/https URLs are accepted; private/localhost hosts are rejected.
+// @Tags         items
+// @Accept       json
+// @Produce      json
+// @Param        body  body  ItemUploadByURLRequest  true  "URL upload payload"
+// @Success      201  {object}  utils.SuccessResponse{data=entity.Item}
+// @Failure      400  {object}  utils.ErrorResponse
+// @Security     BearerAuth
+// @Router       /item/upload-by-url [post]
+func (h *ItemHandler) UploadByURL(c *fiber.Ctx) error {
+	userID, ok := h.UserID(c)
+	if !ok {
+		return utils.Error(c, fiber.StatusUnauthorized, "unauthorized")
+	}
+	var req ItemUploadByURLRequest
+	if err := c.BodyParser(&req); err != nil {
+		return utils.ValidationError(c, "invalid request body", err.Error())
+	}
+	if req.URL == "" {
+		return utils.ValidationError(c, "url is required", "")
+	}
+
+	file, err := h.svc.UploadByURL(c.Context(), service.ItemUploadByURLInput{
+		UserID:          userID,
+		Directory:       req.Directory,
+		URL:             req.URL,
+		Favorite:        req.Favorite,
+		ShareRecipients: req.ShareWith,
+		Password:        req.Password,
+	})
+	if err != nil {
+		return respondError(c, err)
+	}
+	return utils.Created(c, "file uploaded from URL", file)
 }
 
 // Update godoc
