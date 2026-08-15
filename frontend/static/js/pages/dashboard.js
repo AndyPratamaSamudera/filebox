@@ -61,6 +61,9 @@ export async function renderDashboard(container, onLogout) {
     unlockItem: null,
     unlockAction: '',
     unlockPassword: '',
+    previewItem: null,
+    previewPassword: '',
+    previewFullscreen: false,
     apiKeys: [],
     newApiKey: null,
     revealKey: null,
@@ -110,6 +113,7 @@ export async function renderDashboard(container, onLogout) {
           <div id="share-modal" class="modal-backdrop hidden"></div>
           <div id="lock-modal" class="modal-backdrop hidden"></div>
           <div id="unlock-modal" class="modal-backdrop hidden"></div>
+          <div id="preview-modal" class="modal-backdrop hidden"></div>
           <div id="add-friend-modal" class="modal-backdrop hidden"></div>
           <div id="reveal-key-modal" class="modal-backdrop hidden"></div>
           <div id="bulk-action-modal" class="modal-backdrop hidden"></div>
@@ -427,6 +431,105 @@ export async function renderDashboard(container, onLogout) {
     for (const item of selected) { try { downloadItem(item, false); } catch {} }
   }
 
+  function previewKind(item) {
+    const name = item?.name || item?.item_name || '';
+    const mime = String(item?.mime || item?.item_mime || '').toLowerCase();
+    const ext = (name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '').toLowerCase();
+    if (mime.startsWith('video/') || ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'm4v', 'avi', 'mkv'].includes(ext)) return 'video';
+    if (mime.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'weba'].includes(ext)) return 'audio';
+    if (mime.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'avif'].includes(ext)) return 'image';
+    if (mime === 'application/pdf' || ext === 'pdf') return 'pdf';
+    return '';
+  }
+
+  function openPreview(item, password = '') {
+    if (!item || item.type !== 'file') return;
+    state.previewItem = item;
+    state.previewPassword = password;
+    update();
+  }
+
+  function closePreview() {
+    state.previewItem = null;
+    state.previewPassword = '';
+    update();
+  }
+
+  function seekPreviewVideo(seconds) {
+    const video = container.querySelector('#preview-modal video');
+    if (video) video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + seconds));
+  }
+
+  function setPreviewSpeed(speed) {
+    const video = container.querySelector('#preview-modal video');
+    if (video) video.playbackRate = Number(speed) || 1;
+  }
+
+  function togglePreviewPlay() {
+    const video = container.querySelector('#preview-modal video');
+    if (!video) return;
+    if (video.paused) video.play().catch(() => {});
+    else video.pause();
+    const button = container.querySelector('#preview-play-pause');
+    if (button) button.innerHTML = video.paused ? iconSvg('play', 16) : iconSvg('pause', 16);
+  }
+
+  function formatPreviewTime(value) {
+    if (!Number.isFinite(value)) return '0:00';
+    const total = Math.max(0, Math.floor(value));
+    const minutes = Math.floor(total / 60);
+    const seconds = String(total % 60).padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  }
+
+  function syncPreviewVideoControls(video) {
+    const progress = container.querySelector('#preview-progress');
+    const current = container.querySelector('#preview-current-time');
+    const duration = container.querySelector('#preview-duration');
+    const playButton = container.querySelector('#preview-play-pause');
+    if (progress) {
+      progress.max = Number.isFinite(video.duration) ? video.duration : 0;
+      progress.value = video.currentTime || 0;
+      progress.style.setProperty('--preview-progress', `${progress.max ? (video.currentTime / progress.max) * 100 : 0}%`);
+    }
+    if (current) current.textContent = formatPreviewTime(video.currentTime);
+    if (duration) duration.textContent = formatPreviewTime(video.duration);
+    if (playButton) {
+      playButton.innerHTML = video.paused ? iconSvg('play', 16) : iconSvg('pause', 16);
+      playButton.setAttribute('aria-label', video.paused ? 'Play' : 'Pause');
+    }
+  }
+
+  function togglePreviewSpeedMenu() {
+    const menu = container.querySelector('#preview-speed-menu');
+    if (!menu) return;
+    menu.classList.toggle('hidden');
+  }
+
+  function choosePreviewSpeed(speed) {
+    setPreviewSpeed(speed);
+    const menu = container.querySelector('#preview-speed-menu');
+    menu?.classList.add('hidden');
+    const label = container.querySelector('#preview-speed-label');
+    if (label) label.textContent = `${Number(speed)}×`;
+  }
+
+  function previewItem(item) {
+    const path = item.path || item.item_path;
+    if (!path) return;
+    if (item.is_locked || item.item_is_locked) {
+      openUnlockModal(item, 'preview');
+      return;
+    }
+    if (!previewKind(item)) {
+      state.previewItem = item;
+      state.previewPassword = '';
+      update();
+      return;
+    }
+    openPreview(item);
+  }
+
   function downloadItem(item, preview = false) {
     const path = item.path || item.item_path;
     if (!path) return;
@@ -434,7 +537,8 @@ export async function renderDashboard(container, onLogout) {
       openUnlockModal(item, preview ? 'preview' : 'download');
       return;
     }
-    openFileUrl(path, preview ? 'preview' : 'download', '', item.name || item.item_name);
+    if (preview) previewItem(item);
+    else openFileUrl(path, 'download', '', item.name || item.item_name);
   }
 
   function openFileUrl(path, kind, password = '', filename = '') {
@@ -468,7 +572,8 @@ export async function renderDashboard(container, onLogout) {
     const password = state.unlockPassword.trim();
     if (!item || !action) { closeUnlockModal(); return; }
     closeUnlockModal();
-    openFileUrl(item.path || item.item_path, action === 'preview' ? 'preview' : 'download', password, item.name || item.item_name);
+    if (action === 'preview') openPreview(item, password);
+    else openFileUrl(item.path || item.item_path, 'download', password, item.name || item.item_name);
   }
 
   function openUploadModal() {
@@ -721,6 +826,7 @@ export async function renderDashboard(container, onLogout) {
     renderShareModal();
     renderLockModal();
     renderUnlockModal();
+    renderPreviewModal();
     renderAddFriendModal();
     renderRevealKeyModal();
     renderBulkActionModal();
@@ -1631,6 +1737,123 @@ export async function renderDashboard(container, onLogout) {
     el.querySelector('#cancel-unlock').addEventListener('click', closeUnlockModal);
     el.querySelector('#confirm-unlock').addEventListener('click', confirmUnlock);
     el.addEventListener('click', (e) => { if (e.target === el) closeUnlockModal(); });
+  }
+
+  function renderPreviewModal() {
+    const el = container.querySelector('#preview-modal');
+    if (!el) return;
+    if (!state.previewItem) {
+      container.classList.remove('preview-media-open');
+      el.classList.add('hidden');
+      el.innerHTML = '';
+      return;
+    }
+    el.classList.remove('hidden');
+    const item = state.previewItem;
+    const name = item.name || item.item_name || 'File';
+    const kind = previewKind(item);
+    container.classList.toggle('preview-media-open', kind === 'video' || kind === 'image');
+    const url = itemUrl(item.path || item.item_path, 'preview', state.previewPassword);
+    let content = '';
+    if (kind === 'video') content = `
+      <div class="preview-video-stage">
+        <video class="preview-media" autoplay playsinline preload="metadata" src="${escapeHtml(url)}">Your browser cannot play this video.</video>
+        <div class="preview-video-controls">
+          <div class="preview-control-row">
+            <button class="preview-control-btn" id="seek-backward" type="button" title="Back 10 seconds" aria-label="Back 10 seconds">${iconSvg('rewind', 16)}</button>
+            <button class="preview-control-btn preview-play-btn" id="preview-play-pause" type="button" title="Play/Pause" aria-label="Pause">${iconSvg('pause', 16)}</button>
+            <button class="preview-control-btn" id="seek-forward" type="button" title="Forward 10 seconds" aria-label="Forward 10 seconds">${iconSvg('forward', 16)}</button>
+            <input id="preview-progress" class="preview-progress" type="range" min="0" max="0" value="0" step="0.01" aria-label="Video progress" />
+            <span class="preview-time"><span id="preview-current-time">0:00</span> / <span id="preview-duration">0:00</span></span>
+            <button class="preview-control-btn" id="preview-mute" type="button" title="Mute" aria-label="Mute">${iconSvg('volume', 16)}</button>
+            <input id="preview-volume" class="preview-volume" type="range" min="0" max="1" value="1" step="0.05" aria-label="Volume" />
+            <div class="preview-speed-menu-wrap">
+            <button class="preview-control-btn preview-speed-button" id="preview-speed-button" type="button" aria-label="Playback speed" title="Playback speed"><span id="preview-speed-label">1×</span></button>
+            <div class="preview-speed-menu hidden" id="preview-speed-menu">
+              <div class="preview-speed-menu-title">Playback speed</div>
+              ${[0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => `<button type="button" class="preview-speed-option ${speed === 1 ? 'active' : ''}" data-speed="${speed}">${speed}×</button>`).join('')}
+            </div>
+          </div>
+          </div>
+        </div>
+      </div>`;
+    else if (kind === 'audio') content = `<audio class="preview-audio" controls autoplay src="${escapeHtml(url)}">Your browser cannot play this audio.</audio>`;
+    else if (kind === 'image') content = `<img class="preview-image" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" />`;
+    else if (kind === 'pdf') content = `<iframe class="preview-pdf" src="${escapeHtml(url)}" title="${escapeHtml(name)}"></iframe>`;
+    else content = `<div class="preview-unsupported"><div class="file-card-icon">${iconSvg('file', 42)}</div><h4>Preview tidak tersedia</h4><p class="muted small">Format ini tidak dapat dijalankan langsung di browser. Silakan download file untuk membukanya.</p></div>`;
+    const videoControls = '';
+    el.innerHTML = `
+      <div class="modal card preview-modal ${kind === 'video' ? 'preview-video-viewer' : ''}">
+        <div class="modal-head"><h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3><div class="preview-head-actions">${kind !== 'video' ? `<button class="action-btn" id="fullscreen-preview" aria-label="Fullscreen" title="Fullscreen">${iconSvg('maximize', 16)}</button>` : ''}<button class="action-btn modal-close" id="close-preview-modal" aria-label="Close">${iconSvg('close', 16)}</button></div></div>
+        <div class="preview-body">${content}</div>
+        ${videoControls}
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="download-preview">${iconSvg('download', 16)} Download</button>
+          <button class="btn btn-primary" id="dismiss-preview">Close</button>
+        </div>
+      </div>
+    `;
+    el.querySelector('#close-preview-modal').addEventListener('click', closePreview);
+    el.querySelector('#fullscreen-preview')?.addEventListener('click', () => {
+      const preview = el.querySelector('.preview-modal');
+      preview?.requestFullscreen?.().catch(() => {});
+    });
+    el.querySelector('#dismiss-preview').addEventListener('click', closePreview);
+    el.querySelector('#download-preview').addEventListener('click', () => {
+      openFileUrl(item.path || item.item_path, 'download', state.previewPassword, name);
+    });
+    el.querySelector('#seek-backward')?.addEventListener('click', () => seekPreviewVideo(-10));
+    el.querySelector('#seek-forward')?.addEventListener('click', () => seekPreviewVideo(10));
+    el.querySelector('#preview-play-pause')?.addEventListener('click', togglePreviewPlay);
+    const video = el.querySelector('video');
+    if (video) {
+      let isSeeking = false;
+      const sync = () => syncPreviewVideoControls(video);
+      video.addEventListener('loadedmetadata', sync);
+      video.addEventListener('play', sync);
+      video.addEventListener('pause', sync);
+      const progress = el.querySelector('#preview-progress');
+      progress?.addEventListener('pointerdown', () => { isSeeking = true; });
+      progress?.addEventListener('input', (event) => {
+        isSeeking = true;
+        const value = Number(event.target.value);
+        const percent = video.duration ? (value / video.duration) * 100 : 0;
+        progress.style.setProperty('--preview-progress', `${percent}%`);
+        const current = el.querySelector('#preview-current-time');
+        if (current) current.textContent = formatPreviewTime(value);
+      });
+      const commitSeek = (event) => {
+        const value = Number(event.target.value);
+        if (Number.isFinite(value) && Number.isFinite(video.duration)) video.currentTime = value;
+        isSeeking = false;
+        sync();
+      };
+      progress?.addEventListener('change', commitSeek);
+      progress?.addEventListener('pointerup', commitSeek);
+      progress?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') commitSeek(event);
+      });
+      video.addEventListener('timeupdate', () => {
+        if (isSeeking) return;
+        syncPreviewVideoControls(video);
+      });
+      el.querySelector('#preview-volume')?.addEventListener('input', (event) => {
+        video.volume = Number(event.target.value);
+        video.muted = video.volume === 0;
+        const mute = el.querySelector('#preview-mute');
+        if (mute) mute.innerHTML = video.muted ? iconSvg('volumeOff', 16) : iconSvg('volume', 16);
+      });
+      el.querySelector('#preview-mute')?.addEventListener('click', () => {
+        video.muted = !video.muted;
+        const mute = el.querySelector('#preview-mute');
+        if (mute) mute.innerHTML = video.muted ? iconSvg('volumeOff', 16) : iconSvg('volume', 16);
+      });
+      sync();
+    }
+    el.querySelector('#preview-speed-button')?.addEventListener('click', togglePreviewSpeedMenu);
+    el.querySelectorAll('.preview-speed-option').forEach((button) => {
+      button.addEventListener('click', () => choosePreviewSpeed(button.dataset.speed));
+    });
   }
 
   function renderAddFriendModal() {

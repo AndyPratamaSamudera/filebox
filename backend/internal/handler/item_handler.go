@@ -2,7 +2,9 @@ package handler
 
 import (
 	"fmt"
+	"mime"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -338,6 +340,7 @@ func (h *ItemHandler) Download(c *fiber.Ctx) error {
 	}
 	tempPath, err := h.svc.DecryptToTempPath(c.Context(), item)
 	if err != nil {
+		utils.Log.Error().Err(err).Uint64("item_id", item.ID).Str("path", item.Path).Msg("failed to decrypt file for download")
 		return respondError(c, err)
 	}
 	defer func() { _ = removeFile(tempPath) }()
@@ -379,13 +382,21 @@ func (h *ItemHandler) Preview(c *fiber.Ctx) error {
 	}
 	tempPath, err := h.svc.DecryptToTempPath(c.Context(), item)
 	if err != nil {
+		utils.Log.Error().Err(err).Uint64("item_id", item.ID).Str("path", item.Path).Msg("failed to decrypt file for preview")
 		return respondError(c, err)
 	}
 	defer func() { _ = removeFile(tempPath) }()
 
 	c.Set(fiber.HeaderContentDisposition, fmt.Sprintf(`inline; filename="%s"`, item.Name))
-	if item.MIME != nil && *item.MIME != "" {
-		c.Set(fiber.HeaderContentType, *item.MIME)
+	contentType := ""
+	if item.MIME != nil {
+		contentType = strings.TrimSpace(*item.MIME)
+	}
+	if contentType == "" || contentType == "application/octet-stream" {
+		contentType = mime.TypeByExtension(filepath.Ext(item.FullName()))
+	}
+	if contentType != "" {
+		c.Set(fiber.HeaderContentType, contentType)
 	}
 	return c.SendFile(tempPath)
 }

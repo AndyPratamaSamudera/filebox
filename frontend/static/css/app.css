@@ -257,6 +257,57 @@ button, input { font: inherit; }
 .modal label.form-label { display: block; margin-bottom: 0.4rem; }
 .modal-field { display: flex; flex-direction: column; gap: 0.35rem; }
 
+/* Inline file preview modal */
+.preview-modal { max-width: min(960px, 94vw); max-height: 92vh; }
+.preview-head-actions { display: flex; align-items: center; gap: 0.25rem; }
+.preview-video-viewer { width: 100vw; max-width: none; height: 100vh; max-height: none; padding: 0; border-radius: 0; background: #080b0d; gap: 0; }
+.preview-video-viewer .modal-head { position: absolute; inset: 0 0 auto; z-index: 2; padding: 0.75rem 1rem; background: linear-gradient(to bottom, rgba(0,0,0,0.72), transparent); }
+.preview-video-viewer .modal-head h3 { color: white; }
+.preview-video-viewer .modal-actions { display: none; }
+.preview-video-viewer .preview-body { flex: 1 1 auto; width: 100%; min-height: 0; height: auto; max-height: none; padding: 0; border-radius: 0; overflow: hidden; }
+.preview-video-stage { position: relative; width: 100%; height: 100%; min-height: 0; display: flex; flex: 1 1 auto; align-items: center; justify-content: center; overflow: hidden; }
+.preview-video-stage .preview-media { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; flex: 1 1 auto; object-fit: contain; background: #080b0d; }
+.preview-video-top-controls { display: none; }
+.preview-speed-menu-wrap { position: relative; }
+.preview-speed-menu { position: absolute; top: calc(100% + 0.45rem); right: 0; min-width: 150px; padding: 0.4rem; border: 1px solid rgba(255,255,255,0.18); border-radius: var(--radius-sm); background: rgba(12, 14, 16, 0.96); box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
+.preview-speed-menu-title { padding: 0.35rem 0.5rem 0.45rem; color: var(--muted); font-size: 0.72rem; }
+.preview-speed-option { display: block; width: 100%; padding: 0.45rem 0.55rem; border: 0; border-radius: var(--radius-sm); color: var(--text); background: transparent; text-align: left; cursor: pointer; }
+.preview-speed-option:hover, .preview-speed-option.active { color: var(--text-bright); background: var(--bg-elevated-2); }
+.preview-video-controls { position: absolute; inset: auto 0 0; z-index: 1; width: 100%; padding: 0.55rem 0.65rem 0.7rem; color: white; background: linear-gradient(to top, rgba(12, 12, 12, 0.94), rgba(12, 12, 12, 0.78), transparent); box-sizing: border-box; }
+.preview-control-row { display: flex; align-items: center; gap: 0.45rem; min-height: 34px; width: 100%; }
+.preview-progress { display: block; flex: 1 1 auto; min-width: 70px; width: auto; height: 5px; margin: 0 0.15rem; appearance: none; border-radius: 999px; outline: none; cursor: pointer; background: linear-gradient(to right, var(--accent-green) var(--preview-progress, 0%), rgba(255,255,255,0.35) var(--preview-progress, 0%)); }
+.preview-progress::-webkit-slider-runnable-track { height: 5px; border-radius: 999px; background: linear-gradient(to right, var(--accent-green) var(--preview-progress, 0%), rgba(255,255,255,0.35) var(--preview-progress, 0%)); }
+.preview-progress::-moz-range-track { height: 5px; border-radius: 999px; background: rgba(255,255,255,0.35); }
+.preview-progress::-moz-range-progress { height: 5px; border-radius: 999px; background: var(--accent-green); }
+.preview-progress::-webkit-slider-thumb, .preview-volume::-webkit-slider-thumb { appearance: none; width: 13px; height: 13px; border-radius: 50%; background: white; cursor: pointer; }
+.preview-progress::-moz-range-thumb, .preview-volume::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: white; cursor: pointer; }
+.preview-time { min-width: 92px; color: rgba(255,255,255,0.9); font-size: 0.78rem; white-space: nowrap; }
+.preview-volume { width: 76px; height: 4px; appearance: none; border-radius: 999px; cursor: pointer; background: rgba(255,255,255,0.35); }
+.preview-control-row > .preview-speed-menu-wrap { margin-left: auto; }
+.preview-speed-button { min-width: 42px; font-size: 0.78rem; }
+.preview-control-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.1rem; min-width: 38px; height: 34px; padding: 0 0.45rem; border: 0; border-radius: var(--radius-sm); color: white; background: rgba(20, 20, 20, 0.72); cursor: pointer; font-size: 0.95rem; }
+.preview-control-btn:hover { background: rgba(70, 70, 70, 0.9); }
+.preview-control-btn span { font-size: 0.68rem; font-weight: 700; }
+.preview-play-btn { width: 42px; font-size: 1rem; }
+.preview-video-controls .preview-speed-menu { top: auto; bottom: calc(100% + 0.45rem); }
+@media (max-width: 600px) {
+  .preview-control-row { gap: 0.25rem; }
+  .preview-time { min-width: 70px; font-size: 0.7rem; }
+  .preview-volume { width: 52px; }
+  .preview-control-btn { min-width: 34px; padding: 0 0.3rem; }
+  .preview-progress { min-width: 30px; }
+}
+.preview-speed { display: flex !important; flex-direction: row !important; align-items: center; gap: 0.35rem !important; color: white; font-size: 0.78rem !important; }
+.preview-speed .input { width: auto; padding: 0.35rem 0.5rem; }
+.preview-modal .modal-head h3 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-body { min-height: 180px; max-height: 68vh; display: flex; align-items: center; justify-content: center; overflow: auto; background: #080b0d; border-radius: var(--radius-sm); padding: 0.75rem; }
+.preview-media { display: block; width: 100%; max-height: 64vh; object-fit: contain; }
+.preview-audio { width: min(600px, 100%); }
+.preview-image { display: block; max-width: 100%; max-height: 64vh; object-fit: contain; }
+.preview-pdf { width: 100%; height: 64vh; border: 0; background: white; }
+.preview-unsupported { max-width: 380px; text-align: center; padding: 2rem 1rem; }
+.preview-unsupported h4 { margin: 0.75rem 0 0.35rem; color: var(--text-bright); }
+
 /* Upload modal */
 .upload-modal { max-width: 480px; }
 .upload-modal-list { display: flex; flex-direction: column; gap: 0.75rem; max-height: 60vh; overflow-y: auto; }
@@ -553,6 +604,10 @@ button, input { font: inherit; }
 
   .mobile-top-bar { display: flex; }
   .bottom-nav { display: flex; }
+
+  /* Keep the media preview unobstructed by the app navigation. */
+  .preview-media-open .bottom-nav { display: none; }
+  .preview-media-open .main { padding-bottom: 0; }
 
   .page-header {
     padding: 0.75rem 1rem;
