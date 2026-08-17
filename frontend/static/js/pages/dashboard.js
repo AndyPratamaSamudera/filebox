@@ -1588,19 +1588,14 @@ export async function renderDashboard(container, onLogout) {
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="cancel-create-folder">Cancel</button>
-          <button class="btn btn-primary" id="confirm-create-folder" type="button">Create</button>
+          <button class="btn btn-primary" id="confirm-create-folder">Create</button>
         </div>
       </div>
     `;
     const input = el.querySelector('#folder-name-input');
     input.focus();
     input.addEventListener('input', (e) => { state.createFolderName = e.target.value; });
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        createNewFolder();
-      }
-    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') createNewFolder(); });
     el.querySelector('#close-create-folder').addEventListener('click', closeCreateFolder);
     el.querySelector('#cancel-create-folder').addEventListener('click', closeCreateFolder);
     el.querySelector('#confirm-create-folder').addEventListener('click', createNewFolder);
@@ -1855,9 +1850,6 @@ export async function renderDashboard(container, onLogout) {
       });
       sync();
     }
-    el.ontouchmove = (event) => {
-      if (event.target.closest('.preview-video-viewer')) event.preventDefault();
-    };
     el.querySelector('#preview-speed-button')?.addEventListener('click', togglePreviewSpeedMenu);
     el.querySelectorAll('.preview-speed-option').forEach((button) => {
       button.addEventListener('click', () => choosePreviewSpeed(button.dataset.speed));
