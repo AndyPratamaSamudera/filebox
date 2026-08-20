@@ -17,6 +17,9 @@ function hasExtension(name) {
   return extStart > 0 && extStart < name.length - 1;
 }
 
+let previewCleanup = null;
+let lastRenderedPreviewKey = null;
+
 export async function renderDashboard(container, onLogout) {
   const state = {
     currentDirectory: '',
@@ -63,7 +66,6 @@ export async function renderDashboard(container, onLogout) {
     unlockPassword: '',
     previewItem: null,
     previewPassword: '',
-    previewFullscreen: false,
     apiKeys: [],
     newApiKey: null,
     revealKey: null,
@@ -83,7 +85,12 @@ export async function renderDashboard(container, onLogout) {
     bindLayoutEvents();
     update();
     init();
-    window.addEventListener('resize', update);
+    // Avoid re-rendering while in fullscreen: entering/leaving fullscreen fires
+    // a resize event, and re-rendering would destroy the fullscreen element.
+    window.addEventListener('resize', () => {
+      if (document.fullscreenElement || document.webkitFullscreenElement) return;
+      update();
+    });
   }
 
   function layoutHtml() {
@@ -450,6 +457,11 @@ export async function renderDashboard(container, onLogout) {
   }
 
   function closePreview() {
+    if (previewCleanup) { previewCleanup(); previewCleanup = null; }
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
     state.previewItem = null;
     state.previewPassword = '';
     update();
@@ -465,13 +477,15 @@ export async function renderDashboard(container, onLogout) {
     if (video) video.playbackRate = Number(speed) || 1;
   }
 
-  function togglePreviewPlay() {
+  async function togglePreviewPlay() {
     const video = container.querySelector('#preview-modal video');
     if (!video) return;
-    if (video.paused) video.play().catch(() => {});
-    else video.pause();
-    const button = container.querySelector('#preview-play-pause');
-    if (button) button.innerHTML = video.paused ? iconSvg('play', 16) : iconSvg('pause', 16);
+    try {
+      if (video.paused) await video.play();
+      else video.pause();
+    } catch (err) {
+      console.error('[FileBox] Video play failed:', err);
+    }
   }
 
   function formatPreviewTime(value) {
@@ -1743,37 +1757,54 @@ export async function renderDashboard(container, onLogout) {
     const el = container.querySelector('#preview-modal');
     if (!el) return;
     if (!state.previewItem) {
-      container.classList.remove('preview-media-open');
-      el.classList.add('hidden');
-      el.innerHTML = '';
+      if (lastRenderedPreviewKey !== null) {
+        if (previewCleanup) { previewCleanup(); previewCleanup = null; }
+        lastRenderedPreviewKey = null;
+        container.classList.remove('preview-media-open');
+        el.classList.add('hidden');
+        el.innerHTML = '';
+      }
       return;
     }
-    el.classList.remove('hidden');
     const item = state.previewItem;
     const name = item.name || item.item_name || 'File';
     const kind = previewKind(item);
+    const key = `${item.path || item.item_path}|${kind}|${state.previewPassword}`;
+    // Only rebuild the preview DOM when the item actually changes. Rebuilding on
+    // every update() (e.g. triggered by a resize event when entering fullscreen)
+    // destroys the fullscreen element and breaks the Fullscreen API.
+    if (lastRenderedPreviewKey === key) return;
+    if (previewCleanup) { previewCleanup(); previewCleanup = null; }
+    lastRenderedPreviewKey = key;
+    el.classList.remove('hidden');
     container.classList.toggle('preview-media-open', kind === 'video' || kind === 'image');
     const url = itemUrl(item.path || item.item_path, 'preview', state.previewPassword);
     let content = '';
     if (kind === 'video') content = `
-      <div class="preview-video-stage">
-        <video class="preview-media" autoplay playsinline preload="metadata" src="${escapeHtml(url)}">Your browser cannot play this video.</video>
-        <div class="preview-video-controls">
-          <div class="preview-control-row">
-            <button class="preview-control-btn" id="seek-backward" type="button" title="Back 10 seconds" aria-label="Back 10 seconds">${iconSvg('rewind', 16)}</button>
-            <button class="preview-control-btn preview-play-btn" id="preview-play-pause" type="button" title="Play/Pause" aria-label="Pause">${iconSvg('pause', 16)}</button>
-            <button class="preview-control-btn" id="seek-forward" type="button" title="Forward 10 seconds" aria-label="Forward 10 seconds">${iconSvg('forward', 16)}</button>
+      <div class="preview-video-stage" id="preview-video-stage">
+        <video class="preview-media" id="preview-video" playsinline preload="metadata" src="${escapeHtml(url)}">Your browser cannot play this video.</video>
+        <div class="preview-video-controls" id="preview-video-controls">
+          <div class="preview-progress-row">
             <input id="preview-progress" class="preview-progress" type="range" min="0" max="0" value="0" step="0.01" aria-label="Video progress" />
-            <span class="preview-time"><span id="preview-current-time">0:00</span> / <span id="preview-duration">0:00</span></span>
-            <button class="preview-control-btn" id="preview-mute" type="button" title="Mute" aria-label="Mute">${iconSvg('volume', 16)}</button>
-            <input id="preview-volume" class="preview-volume" type="range" min="0" max="1" value="1" step="0.05" aria-label="Volume" />
-            <div class="preview-speed-menu-wrap">
-            <button class="preview-control-btn preview-speed-button" id="preview-speed-button" type="button" aria-label="Playback speed" title="Playback speed"><span id="preview-speed-label">1×</span></button>
-            <div class="preview-speed-menu hidden" id="preview-speed-menu">
-              <div class="preview-speed-menu-title">Playback speed</div>
-              ${[0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => `<button type="button" class="preview-speed-option ${speed === 1 ? 'active' : ''}" data-speed="${speed}">${speed}×</button>`).join('')}
-            </div>
           </div>
+          <div class="preview-control-row">
+            <button class="preview-control-btn" id="preview-play-pause" type="button" title="Play/Pause" aria-label="Pause">${iconSvg('pause', 18)}</button>
+            <button class="preview-control-btn" id="seek-backward" type="button" title="Back 10 seconds" aria-label="Back 10 seconds">${iconSvg('rewind', 18)}</button>
+            <button class="preview-control-btn" id="seek-forward" type="button" title="Forward 10 seconds" aria-label="Forward 10 seconds">${iconSvg('forward', 18)}</button>
+            <span class="preview-time"><span id="preview-current-time">0:00</span> / <span id="preview-duration">0:00</span></span>
+            <div class="preview-control-spacer"></div>
+            <div class="preview-volume-wrap">
+              <button class="preview-control-btn" id="preview-mute" type="button" title="Mute" aria-label="Mute">${iconSvg('volume', 18)}</button>
+              <input id="preview-volume" class="preview-volume" type="range" min="0" max="1" value="1" step="0.05" aria-label="Volume" />
+            </div>
+            <div class="preview-speed-menu-wrap">
+              <button class="preview-control-btn preview-speed-button" id="preview-speed-button" type="button" aria-label="Playback speed" title="Playback speed"><span id="preview-speed-label">1×</span></button>
+              <div class="preview-speed-menu hidden" id="preview-speed-menu">
+                <div class="preview-speed-menu-title">Playback speed</div>
+                ${[0.5, 0.75, 1, 1.25, 1.5, 2].map((speed) => `<button type="button" class="preview-speed-option ${speed === 1 ? 'active' : ''}" data-speed="${speed}">${speed}×</button>`).join('')}
+              </div>
+            </div>
+            <button class="preview-control-btn" id="preview-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen">${iconSvg('maximize', 18)}</button>
           </div>
         </div>
       </div>`;
@@ -1784,7 +1815,7 @@ export async function renderDashboard(container, onLogout) {
     const videoControls = '';
     el.innerHTML = `
       <div class="modal card preview-modal ${kind === 'video' ? 'preview-video-viewer' : ''}">
-        <div class="modal-head"><h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3><div class="preview-head-actions">${kind !== 'video' ? `<button class="action-btn" id="fullscreen-preview" aria-label="Fullscreen" title="Fullscreen">${iconSvg('maximize', 16)}</button>` : ''}<button class="action-btn modal-close" id="close-preview-modal" aria-label="Close">${iconSvg('close', 16)}</button></div></div>
+        <div class="modal-head"><h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3><div class="preview-head-actions"><button class="action-btn modal-close" id="close-preview-modal" aria-label="Close">${iconSvg('close', 16)}</button></div></div>
         <div class="preview-body">${content}</div>
         ${videoControls}
         <div class="modal-actions">
@@ -1794,10 +1825,6 @@ export async function renderDashboard(container, onLogout) {
       </div>
     `;
     el.querySelector('#close-preview-modal').addEventListener('click', closePreview);
-    el.querySelector('#fullscreen-preview')?.addEventListener('click', () => {
-      const preview = el.querySelector('.preview-modal');
-      preview?.requestFullscreen?.().catch(() => {});
-    });
     el.querySelector('#dismiss-preview').addEventListener('click', closePreview);
     el.querySelector('#download-preview').addEventListener('click', () => {
       openFileUrl(item.path || item.item_path, 'download', state.previewPassword, name);
@@ -1808,10 +1835,41 @@ export async function renderDashboard(container, onLogout) {
     const video = el.querySelector('video');
     if (video) {
       let isSeeking = false;
+      let hideTimer = null;
+      const stage = el.querySelector('#preview-video-stage');
+      const controls = el.querySelector('#preview-video-controls');
+      const fullscreenBtn = el.querySelector('#preview-fullscreen');
       const sync = () => syncPreviewVideoControls(video);
+
+      const showControls = () => {
+        if (!controls) return;
+        controls.classList.remove('preview-controls-hidden');
+        clearTimeout(hideTimer);
+        if (!video.paused) {
+          hideTimer = setTimeout(() => {
+            controls.classList.add('preview-controls-hidden');
+          }, 2800);
+        }
+      };
+      const togglePlay = async () => {
+        try {
+          if (video.paused) await video.play();
+          else video.pause();
+        } catch (err) {
+          console.error('[FileBox] Video play failed:', err);
+        }
+        showControls();
+      };
+
       video.addEventListener('loadedmetadata', sync);
-      video.addEventListener('play', sync);
-      video.addEventListener('pause', sync);
+      video.addEventListener('play', () => { sync(); showControls(); });
+      video.addEventListener('pause', () => { sync(); showControls(); });
+      stage?.addEventListener('mousemove', showControls);
+      stage?.addEventListener('mouseleave', () => {
+        if (!video.paused) controls?.classList.add('preview-controls-hidden');
+      });
+      stage?.addEventListener('touchstart', showControls, { passive: true });
+
       const progress = el.querySelector('#preview-progress');
       progress?.addEventListener('pointerdown', () => { isSeeking = true; });
       progress?.addEventListener('input', (event) => {
@@ -1841,14 +1899,70 @@ export async function renderDashboard(container, onLogout) {
         video.volume = Number(event.target.value);
         video.muted = video.volume === 0;
         const mute = el.querySelector('#preview-mute');
-        if (mute) mute.innerHTML = video.muted ? iconSvg('volumeOff', 16) : iconSvg('volume', 16);
+        if (mute) mute.innerHTML = video.muted ? iconSvg('volumeOff', 18) : iconSvg('volume', 18);
       });
       el.querySelector('#preview-mute')?.addEventListener('click', () => {
         video.muted = !video.muted;
         const mute = el.querySelector('#preview-mute');
-        if (mute) mute.innerHTML = video.muted ? iconSvg('volumeOff', 16) : iconSvg('volume', 16);
+        if (mute) mute.innerHTML = video.muted ? iconSvg('volumeOff', 18) : iconSvg('volume', 18);
       });
+
+      // Fullscreen: use the standard Fullscreen API on the video stage.
+      const requestFs = (target) => {
+        if (target.requestFullscreen) return target.requestFullscreen();
+        if (target.webkitRequestFullscreen) return target.webkitRequestFullscreen();
+        return Promise.reject(new Error('Fullscreen not supported'));
+      };
+      const exitFs = () => {
+        if (document.exitFullscreen) return document.exitFullscreen();
+        if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+        return Promise.resolve();
+      };
+      const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+      const updateFsButton = () => {
+        if (!fullscreenBtn) return;
+        const isFs = fsElement() === stage;
+        fullscreenBtn.innerHTML = isFs ? iconSvg('minimize', 18) : iconSvg('maximize', 18);
+        fullscreenBtn.setAttribute('aria-label', isFs ? 'Exit fullscreen' : 'Fullscreen');
+        fullscreenBtn.setAttribute('title', isFs ? 'Exit fullscreen' : 'Fullscreen');
+      };
+      fullscreenBtn?.addEventListener('click', () => {
+        if (fsElement() === stage) exitFs();
+        else requestFs(stage).catch((err) => {
+          console.error('[FileBox] Fullscreen request failed:', err);
+        });
+      });
+      document.addEventListener('fullscreenchange', updateFsButton);
+      document.addEventListener('webkitfullscreenchange', updateFsButton);
+      const onFsError = (e) => {
+        console.error('[FileBox] Fullscreen error:', e);
+      };
+      document.addEventListener('fullscreenerror', onFsError);
+
+      // Keyboard shortcuts (space, arrows, m, f) while the modal is open.
+      const onKey = (event) => {
+        if (event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA')) return;
+        switch (event.key) {
+          case ' ': case 'k': event.preventDefault(); togglePlay(); break;
+          case 'ArrowLeft': event.preventDefault(); seekPreviewVideo(-10); break;
+          case 'ArrowRight': event.preventDefault(); seekPreviewVideo(10); break;
+          case 'm': event.preventDefault(); video.muted = !video.muted; break;
+          case 'f': case 'F': event.preventDefault(); fullscreenBtn?.click(); break;
+        }
+      };
+      document.addEventListener('keydown', onKey);
+      video.addEventListener('ended', () => { sync(); showControls(); });
+
+      previewCleanup = () => {
+        document.removeEventListener('keydown', onKey);
+        document.removeEventListener('fullscreenchange', updateFsButton);
+        document.removeEventListener('webkitfullscreenchange', updateFsButton);
+        document.removeEventListener('fullscreenerror', onFsError);
+        clearTimeout(hideTimer);
+      };
+
       sync();
+      showControls();
     }
     el.querySelector('#preview-speed-button')?.addEventListener('click', togglePreviewSpeedMenu);
     el.querySelectorAll('.preview-speed-option').forEach((button) => {

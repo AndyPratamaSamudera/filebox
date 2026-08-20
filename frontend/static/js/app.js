@@ -2,15 +2,21 @@ import { auth } from './auth.js?v=14';
 import { renderLogin } from './pages/login.js?v=14';
 import { renderRegister } from './pages/register.js?v=14';
 import { renderDashboard } from './pages/dashboard.js?v=14';
+import { renderLanding } from './pages/landing.js?v=14';
 
 const app = document.getElementById('app');
 
 function route(path) {
   const clean = path.replace(/\/$/, '') || '/';
-  if (!auth.access && clean !== '/register') return renderLoginPage();
+  if (!auth.access && clean === '/') return renderLandingPage();
   if (clean === '/register') return renderRegisterPage();
   if (clean === '/login') return renderLoginPage();
+  if (!auth.access) return renderLoginPage();
   return renderDashboardPage();
+}
+
+function renderLandingPage() {
+  renderLanding(app, () => navigate('/login'), () => navigate('/register'));
 }
 
 function renderLoginPage() {
